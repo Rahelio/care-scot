@@ -6,6 +6,7 @@ export interface SessionUser {
   email: string;
   role: UserRole;
   organisationId: string;
+  staffMemberId: string | null;
 }
 
 export function requireRole(

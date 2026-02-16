@@ -22,6 +22,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
             role: true,
             organisationId: true,
             isActive: true,
+            staffMemberId: true,
           },
         });
 
@@ -43,6 +44,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           email: user.email,
           role: user.role,
           organisationId: user.organisationId,
+          staffMemberId: user.staffMemberId ?? null,
         };
       },
     }),
@@ -50,24 +52,29 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
   callbacks: {
     jwt({ token, user }) {
       if (user) {
-        token.id = user.id;
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        token.role = (user as any).role;
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        token.organisationId = (user as any).organisationId;
+        token.id = user.id!;
+        token.role = user.role;
+        token.organisationId = user.organisationId;
+        token.staffMemberId = user.staffMemberId ?? null;
       }
       return token;
     },
     session({ session, token }) {
       session.user.id = token.id as string;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (session.user as any).role = token.role;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (session.user as any).organisationId = token.organisationId;
+      session.user.role = token.role as import("@prisma/client").UserRole;
+      session.user.organisationId = token.organisationId as string;
+      session.user.staffMemberId = (token.staffMemberId as string | null) ?? null;
       return session;
     },
   },
-  session: { strategy: "jwt" },
+  session: {
+    strategy: "jwt",
+    // Session expires after 30 minutes of inactivity.
+    // updateAge: 60 means the JWT is refreshed on each request made >60s
+    // after the last refresh, rolling the 30-minute window forward.
+    maxAge: 30 * 60,
+    updateAge: 60,
+  },
   pages: {
     signIn: "/login",
   },

@@ -31,5 +31,5 @@ export const chiNumberSchema = z
 
 export const phoneSchema = z
   .string()
-  .regex(/^[0-9\s\+\-\(\)]{7,15}$/, "Invalid phone number")
+  .regex(/^[0-9\s\w+\-\(\)]{7,15}$/, "Invalid phone number")
   .optional();
