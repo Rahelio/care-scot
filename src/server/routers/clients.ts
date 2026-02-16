@@ -572,6 +572,28 @@ export const clientsRouter = router({
       });
     }),
 
+  getRiskAssessmentHistory: protectedProcedure
+    .input(
+      z.object({
+        serviceUserId: z.string().uuid(),
+        assessmentType: z.nativeEnum(RiskAssessmentType),
+      })
+    )
+    .query(async ({ ctx, input }) => {
+      const { organisationId } = ctx.user as { organisationId: string };
+      return ctx.prisma.riskAssessment.findMany({
+        where: {
+          serviceUserId: input.serviceUserId,
+          organisationId,
+          assessmentType: input.assessmentType,
+        },
+        orderBy: { assessmentDate: "desc" },
+        include: {
+          assessedByUser: { select: { name: true, email: true } },
+        },
+      });
+    }),
+
   updateRiskAssessment: protectedProcedure
     .input(
       z.object({

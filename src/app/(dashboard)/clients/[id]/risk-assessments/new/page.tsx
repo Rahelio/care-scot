@@ -1,31 +1,11 @@
-import { notFound, redirect } from "next/navigation";
-import { auth } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
-import { RiskAssessmentForm } from "@/components/modules/clients/risk-assessment-form";
+import { redirect } from "next/navigation";
 
+// Creation is now handled inline on the Risk Assessments tab.
 export default async function NewRiskAssessmentPage({
   params,
 }: {
   params: Promise<{ id: string }>;
 }) {
-  const [session, { id }] = await Promise.all([auth(), params]);
-  if (!session?.user) redirect("/login");
-
-  const { organisationId } = session.user as { organisationId: string };
-
-  const client = await prisma.serviceUser.findUnique({
-    where: { id, organisationId },
-    select: { firstName: true, lastName: true },
-  });
-
-  if (!client) notFound();
-
-  return (
-    <div className="max-w-2xl">
-      <RiskAssessmentForm
-        serviceUserId={id}
-        clientName={`${client.firstName} ${client.lastName}`}
-      />
-    </div>
-  );
+  const { id } = await params;
+  redirect(`/clients/${id}/risk-assessments`);
 }
