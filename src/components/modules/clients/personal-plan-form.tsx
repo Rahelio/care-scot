@@ -3,8 +3,8 @@
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import { Send } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { toDateInputValue } from "@/lib/plan-warning";
 import { Button } from "@/components/ui/button";
@@ -14,11 +14,11 @@ import { Checkbox } from "@/components/ui/checkbox";
 import {
   Form,
   FormControl,
+  FormDescription,
   FormField,
   FormItem,
   FormLabel,
   FormMessage,
-  FormDescription,
 } from "@/components/ui/form";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
@@ -39,79 +39,172 @@ const schema = z.object({
 
 type FormValues = z.infer<typeof schema>;
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type PlanData = Record<string, any>;
+
 interface PersonalPlanFormProps {
   serviceUserId: string;
-  clientName: string;
+  mode: "create" | "edit";
+  planId?: string;
+  defaultValues?: Partial<FormValues>;
+  /** Pre-populate from an existing plan (e.g. "Create New Version" from active) */
+  prefillFrom?: PlanData;
+  onSaved: () => void;
+  onCancel?: () => void;
 }
 
-export function PersonalPlanForm({ serviceUserId, clientName }: PersonalPlanFormProps) {
-  const router = useRouter();
+const SECTIONS = [
+  {
+    title: "Assessment",
+    fields: [
+      {
+        name: "initialAssessment" as const,
+        label: "Initial Assessment",
+        description: "Overall summary of the person's situation and needs",
+      },
+      {
+        name: "healthNeeds" as const,
+        label: "Health Needs",
+        description: "Physical and mental health conditions and requirements",
+      },
+      {
+        name: "welfareNeeds" as const,
+        label: "Welfare Needs",
+        description: "Social, emotional and wellbeing needs",
+      },
+    ],
+  },
+  {
+    title: "Care Planning",
+    fields: [
+      {
+        name: "personalCareRequirements" as const,
+        label: "Personal Care Requirements",
+        description: "Specific personal care tasks and how they should be carried out",
+      },
+      {
+        name: "howNeedsWillBeMet" as const,
+        label: "How Needs Will Be Met",
+        description: "Detailed care plan describing the support to be provided",
+      },
+      {
+        name: "wishesAndPreferences" as const,
+        label: "Wishes and Preferences",
+        description: "The person's own preferences about their care and daily life",
+      },
+      {
+        name: "goalsAndOutcomes" as const,
+        label: "Goals and Outcomes",
+        description: "What the person wants to achieve; measurable outcomes",
+      },
+    ],
+  },
+];
+
+export function PersonalPlanForm({
+  serviceUserId,
+  mode,
+  planId,
+  defaultValues,
+  prefillFrom,
+  onSaved,
+  onCancel,
+}: PersonalPlanFormProps) {
   const utils = trpc.useUtils();
+
+  // Build initial values: explicit defaultValues > prefillFrom > empty
+  const initial: Partial<FormValues> = {
+    consultedWithServiceUser: false,
+    consultedWithRepresentative: false,
+    ...(prefillFrom && {
+      initialAssessment: prefillFrom.initialAssessment ?? "",
+      healthNeeds: prefillFrom.healthNeeds ?? "",
+      welfareNeeds: prefillFrom.welfareNeeds ?? "",
+      personalCareRequirements: prefillFrom.personalCareRequirements ?? "",
+      howNeedsWillBeMet: prefillFrom.howNeedsWillBeMet ?? "",
+      wishesAndPreferences: prefillFrom.wishesAndPreferences ?? "",
+      goalsAndOutcomes: prefillFrom.goalsAndOutcomes ?? "",
+      consultedWithServiceUser: prefillFrom.consultedWithServiceUser ?? false,
+      consultedWithRepresentative: prefillFrom.consultedWithRepresentative ?? false,
+      nextReviewDate: toDateInputValue(prefillFrom.nextReviewDate),
+    }),
+    ...defaultValues,
+  };
 
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: {
-      consultedWithServiceUser: false,
-      consultedWithRepresentative: false,
+      initialAssessment: "",
+      healthNeeds: "",
+      welfareNeeds: "",
+      personalCareRequirements: "",
+      howNeedsWillBeMet: "",
+      wishesAndPreferences: "",
+      goalsAndOutcomes: "",
+      nextReviewDate: "",
+      consultationNotes: "",
+      repConsultationNotes: "",
+      ...initial,
     },
   });
 
-  const mutation = trpc.clients.createPersonalPlan.useMutation({
-    onSuccess: () => {
-      toast.success("Personal plan created as draft — awaiting manager approval");
-      utils.clients.listPersonalPlans.invalidate({ serviceUserId });
-      router.push(`/clients/${serviceUserId}/personal-plan`);
-    },
-    onError: (err) => toast.error(err.message),
-  });
+  const createMutation = trpc.clients.createPersonalPlan.useMutation();
+  const updateMutation = trpc.clients.updatePersonalPlan.useMutation();
+  const notifyMutation = trpc.clients.notifyPlanReady.useMutation();
 
-  function onSubmit(values: FormValues) {
-    mutation.mutate({
-      serviceUserId,
+  const isSaving = createMutation.isPending || updateMutation.isPending;
+  const isSubmitting = isSaving || notifyMutation.isPending;
+
+  function buildPayload(values: FormValues) {
+    return {
       ...values,
       nextReviewDate: values.nextReviewDate ? new Date(values.nextReviewDate) : undefined,
-    });
+    };
   }
 
-  const sections: { title: string; fields: { name: keyof FormValues; label: string; description?: string }[] }[] = [
-    {
-      title: "Assessment",
-      fields: [
-        { name: "initialAssessment", label: "Initial Assessment", description: "Overall summary of the person's situation and needs" },
-        { name: "healthNeeds", label: "Health Needs", description: "Physical and mental health conditions and requirements" },
-        { name: "welfareNeeds", label: "Welfare Needs", description: "Social, emotional and wellbeing needs" },
-      ],
-    },
-    {
-      title: "Care Planning",
-      fields: [
-        { name: "personalCareRequirements", label: "Personal Care Requirements", description: "Specific personal care tasks and how they should be carried out" },
-        { name: "howNeedsWillBeMet", label: "How Needs Will Be Met", description: "Detailed care plan describing the support to be provided" },
-        { name: "wishesAndPreferences", label: "Wishes and Preferences", description: "The person's own preferences about their care and daily life" },
-        { name: "goalsAndOutcomes", label: "Goals and Outcomes", description: "What the person wants to achieve; measurable outcomes" },
-      ],
-    },
-  ];
+  async function save(values: FormValues): Promise<string> {
+    const payload = buildPayload(values);
+    if (mode === "edit" && planId) {
+      await updateMutation.mutateAsync({ id: planId, ...payload });
+      return planId;
+    } else {
+      const plan = await createMutation.mutateAsync({ serviceUserId, ...payload });
+      return plan.id;
+    }
+  }
+
+  async function onSaveDraft(values: FormValues) {
+    try {
+      await save(values);
+      toast.success("Draft saved");
+      utils.clients.listPersonalPlans.invalidate({ serviceUserId });
+      onSaved();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to save");
+    }
+  }
+
+  async function onSubmitForApproval(values: FormValues) {
+    try {
+      const savedPlanId = await save(values);
+      await notifyMutation.mutateAsync({ planId: savedPlanId, serviceUserId });
+      toast.success("Plan saved and submitted for manager approval");
+      utils.clients.listPersonalPlans.invalidate({ serviceUserId });
+      onSaved();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to submit");
+    }
+  }
 
   return (
     <Form {...form}>
-      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-lg font-semibold">New Personal Plan</h2>
-            <p className="text-sm text-muted-foreground">For {clientName}</p>
-          </div>
-          <p className="text-sm text-muted-foreground">
-            Plan will be saved as <strong>Draft</strong> — a manager must approve to activate
-          </p>
-        </div>
-
-        {sections.map((section) => (
+      <div className="space-y-6">
+        {SECTIONS.map((section) => (
           <Card key={section.title}>
             <CardHeader>
               <CardTitle className="text-base">{section.title}</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent className="space-y-5">
               {section.fields.map((f) => (
                 <FormField
                   key={f.name}
@@ -120,14 +213,13 @@ export function PersonalPlanForm({ serviceUserId, clientName }: PersonalPlanForm
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>{f.label}</FormLabel>
-                      {f.description && (
-                        <FormDescription>{f.description}</FormDescription>
-                      )}
+                      <FormDescription>{f.description}</FormDescription>
                       <FormControl>
                         <Textarea
                           {...field}
                           value={(field.value as string) ?? ""}
                           rows={4}
+                          className="resize-y"
                         />
                       </FormControl>
                       <FormMessage />
@@ -139,6 +231,7 @@ export function PersonalPlanForm({ serviceUserId, clientName }: PersonalPlanForm
           </Card>
         ))}
 
+        {/* Consultation */}
         <Card>
           <CardHeader>
             <CardTitle className="text-base">Consultation</CardTitle>
@@ -198,11 +291,20 @@ export function PersonalPlanForm({ serviceUserId, clientName }: PersonalPlanForm
                 </FormItem>
               )}
             />
+          </CardContent>
+        </Card>
+
+        {/* Review Date */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Review Schedule</CardTitle>
+          </CardHeader>
+          <CardContent>
             <FormField
               control={form.control}
               name="nextReviewDate"
               render={({ field }) => (
-                <FormItem>
+                <FormItem className="max-w-xs">
                   <FormLabel>Next Review Date</FormLabel>
                   <FormControl>
                     <Input type="date" {...field} value={field.value ?? ""} />
@@ -214,20 +316,36 @@ export function PersonalPlanForm({ serviceUserId, clientName }: PersonalPlanForm
           </CardContent>
         </Card>
 
-        <div className="flex justify-end gap-3">
+        {/* Actions */}
+        <div className="flex flex-wrap items-center justify-end gap-3 pt-2">
+          {onCancel && (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={onCancel}
+              disabled={isSubmitting}
+            >
+              Cancel
+            </Button>
+          )}
           <Button
             type="button"
             variant="outline"
-            onClick={() => router.back()}
-            disabled={mutation.isPending}
+            onClick={form.handleSubmit(onSaveDraft)}
+            disabled={isSubmitting}
           >
-            Cancel
+            {isSaving && !notifyMutation.isPending ? "Saving…" : "Save Draft"}
           </Button>
-          <Button type="submit" disabled={mutation.isPending}>
-            {mutation.isPending ? "Saving…" : "Save as Draft"}
+          <Button
+            type="button"
+            onClick={form.handleSubmit(onSubmitForApproval)}
+            disabled={isSubmitting}
+          >
+            <Send className="h-4 w-4 mr-2" />
+            {isSubmitting && notifyMutation.isPending ? "Submitting…" : "Submit for Approval"}
           </Button>
         </div>
-      </form>
+      </div>
     </Form>
   );
 }

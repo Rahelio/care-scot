@@ -1,6 +1,11 @@
+import { notFound, redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
-import { redirect } from "next/navigation";
+import { prisma } from "@/lib/prisma";
 import { PersonalPlanView } from "@/components/modules/clients/personal-plan-view";
+
+import type { Metadata } from "next";
+
+export const metadata: Metadata = { title: "Personal Plan — CareScot" };
 
 export default async function PersonalPlanPage({
   params,
@@ -10,7 +15,23 @@ export default async function PersonalPlanPage({
   const [session, { id }] = await Promise.all([auth(), params]);
   if (!session?.user) redirect("/login");
 
-  const { role } = session.user as { role: string };
+  const { role, organisationId } = session.user as {
+    role: string;
+    organisationId: string;
+  };
 
-  return <PersonalPlanView serviceUserId={id} userRole={role} />;
+  const serviceUser = await prisma.serviceUser.findUnique({
+    where: { id, organisationId },
+    select: { createdAt: true },
+  });
+
+  if (!serviceUser) notFound();
+
+  return (
+    <PersonalPlanView
+      serviceUserId={id}
+      serviceUserCreatedAt={serviceUser.createdAt}
+      userRole={role}
+    />
+  );
 }

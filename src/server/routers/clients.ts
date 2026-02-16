@@ -377,6 +377,112 @@ export const clientsRouter = router({
       });
     }),
 
+  updatePersonalPlan: protectedProcedure
+    .input(
+      z.object({
+        id: z.string().uuid(),
+        initialAssessment: z.string().optional(),
+        healthNeeds: z.string().optional(),
+        welfareNeeds: z.string().optional(),
+        personalCareRequirements: z.string().optional(),
+        howNeedsWillBeMet: z.string().optional(),
+        wishesAndPreferences: z.string().optional(),
+        goalsAndOutcomes: z.string().optional(),
+        nextReviewDate: z.coerce.date().optional().nullable(),
+        consultedWithServiceUser: z.boolean().optional(),
+        consultationNotes: z.string().optional(),
+        consultedWithRepresentative: z.boolean().optional(),
+        repConsultationNotes: z.string().optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { organisationId, id: userId } = ctx.user as {
+        organisationId: string;
+        id: string;
+      };
+      const existing = await ctx.prisma.personalPlan.findUniqueOrThrow({
+        where: { id: input.id, organisationId },
+        select: { status: true },
+      });
+      if (existing.status !== "DRAFT") {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Only DRAFT plans can be edited.",
+        });
+      }
+      const { id, ...data } = input;
+      return ctx.prisma.personalPlan.update({
+        where: { id },
+        data: { ...data, updatedBy: userId },
+      });
+    }),
+
+  getActivePlan: protectedProcedure
+    .input(z.object({ serviceUserId: z.string().uuid() }))
+    .query(async ({ ctx, input }) => {
+      const { organisationId } = ctx.user as { organisationId: string };
+      return ctx.prisma.personalPlan.findFirst({
+        where: { serviceUserId: input.serviceUserId, organisationId, status: "ACTIVE" },
+        include: {
+          approvedByUser: { select: { name: true, email: true } },
+          createdByUser: { select: { name: true, email: true } },
+        },
+      });
+    }),
+
+  notifyPlanReady: protectedProcedure
+    .input(
+      z.object({
+        planId: z.string().uuid(),
+        serviceUserId: z.string().uuid(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { organisationId, id: userId } = ctx.user as {
+        organisationId: string;
+        id: string;
+      };
+
+      const [plan, serviceUser, managers] = await Promise.all([
+        ctx.prisma.personalPlan.findUniqueOrThrow({
+          where: { id: input.planId, organisationId },
+          select: { status: true, planVersion: true },
+        }),
+        ctx.prisma.serviceUser.findUniqueOrThrow({
+          where: { id: input.serviceUserId, organisationId },
+          select: { firstName: true, lastName: true },
+        }),
+        ctx.prisma.user.findMany({
+          where: {
+            organisationId,
+            role: { in: ["MANAGER", "ORG_ADMIN"] },
+            id: { not: userId },
+          },
+          select: { id: true },
+        }),
+      ]);
+
+      if (plan.status !== "DRAFT") {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Plan is not a draft." });
+      }
+
+      if (managers.length === 0) return { notified: 0 };
+
+      await ctx.prisma.notification.createMany({
+        data: managers.map((m) => ({
+          userId: m.id,
+          organisationId,
+          title: "Personal plan ready for approval",
+          message: `v${plan.planVersion} personal plan for ${serviceUser.firstName} ${serviceUser.lastName} is ready for review and approval.`,
+          entityType: "personal_plan",
+          entityId: input.planId,
+          link: `/clients/${input.serviceUserId}/personal-plan`,
+        })),
+      });
+
+      return { notified: managers.length };
+    }),
+
   approvePlan: protectedProcedure
     .input(z.object({ id: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {
