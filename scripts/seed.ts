@@ -1,146 +1,235 @@
 /**
- * Dev seed script — populates the database with sample data.
+ * Dev seed script — populates the database with sample data for two organisations.
  * Run with: npm run db:seed
  */
 
-import { PrismaClient, UserRole, StaffRoleType, EmploymentType } from "@prisma/client";
+import { PrismaClient, UserRole, StaffRoleType, EmploymentType, StaffStatus } from "@prisma/client";
 import { hash } from "bcryptjs";
 
 const prisma = new PrismaClient();
 
 async function main() {
-  console.log("🌱 Seeding database...");
+  console.log("🌱 Seeding database...\n");
 
-  // Organisation
-  const org = await prisma.organisation.upsert({
+  const password = await hash("Password123!", 12);
+
+  // -------------------------------------------------------------------------
+  // Organisation 1: Highland Home Care Ltd
+  // -------------------------------------------------------------------------
+  const org1Data = {
+    name: "Highland Home Care Ltd",
+    careInspectorateRegNumber: "CS2024000001",
+    registeredAddress: "15 Academy Street, Inverness, IV1 1JN",
+    registeredManagerName: "Sarah MacLeod",
+    isActive: true,
+  };
+  const org1 = await prisma.organisation.upsert({
     where: { id: "00000000-0000-0000-0000-000000000001" },
-    update: {},
-    create: {
-      id: "00000000-0000-0000-0000-000000000001",
-      name: "CareScot Demo Organisation",
-      careInspectorateRegNumber: "CS2024001234",
-      registeredAddress: "1 Care Street, Edinburgh, EH1 1AA",
-      registeredManagerName: "Jane Smith",
-      phone: "0131 000 0001",
-      email: "admin@carescot-demo.co.uk",
-      isActive: true,
-    },
+    update: org1Data,
+    create: { id: "00000000-0000-0000-0000-000000000001", ...org1Data },
   });
+  console.log(`✅ Organisation 1: ${org1.name}`);
 
-  console.log(`✅ Organisation: ${org.name}`);
-
-  // Admin user
-  const adminPassword = await hash("admin123!", 12);
-  const admin = await prisma.user.upsert({
-    where: { email: "admin@carescot-demo.co.uk" },
+  const sarah = await prisma.user.upsert({
+    where: { email: "sarah@highlandhomecare.co.uk" },
     update: {},
     create: {
-      organisationId: org.id,
-      email: "admin@carescot-demo.co.uk",
-      passwordHash: adminPassword,
+      organisationId: org1.id,
+      email: "sarah@highlandhomecare.co.uk",
+      passwordHash: password,
       role: UserRole.ORG_ADMIN,
-      name: "Admin User",
+      name: "Sarah MacLeod",
       isActive: true,
     },
   });
 
-  console.log(`✅ Admin user: ${admin.email}`);
-
-  // Manager user
-  const managerPassword = await hash("manager123!", 12);
-  const manager = await prisma.user.upsert({
-    where: { email: "manager@carescot-demo.co.uk" },
+  await prisma.user.upsert({
+    where: { email: "david@highlandhomecare.co.uk" },
     update: {},
     create: {
-      organisationId: org.id,
-      email: "manager@carescot-demo.co.uk",
-      passwordHash: managerPassword,
+      organisationId: org1.id,
+      email: "david@highlandhomecare.co.uk",
+      passwordHash: password,
       role: UserRole.MANAGER,
-      name: "Care Manager",
+      name: "David Henderson",
       isActive: true,
     },
   });
 
-  console.log(`✅ Manager user: ${manager.email}`);
-
-  // Carer user
-  const carerPassword = await hash("carer123!", 12);
-  const carerUser = await prisma.user.upsert({
-    where: { email: "carer@carescot-demo.co.uk" },
+  await prisma.user.upsert({
+    where: { email: "fiona@highlandhomecare.co.uk" },
     update: {},
     create: {
-      organisationId: org.id,
-      email: "carer@carescot-demo.co.uk",
-      passwordHash: carerPassword,
+      organisationId: org1.id,
+      email: "fiona@highlandhomecare.co.uk",
+      passwordHash: password,
+      role: UserRole.SENIOR_CARER,
+      name: "Fiona Campbell",
+      isActive: true,
+    },
+  });
+
+  const craig = await prisma.user.upsert({
+    where: { email: "craig@highlandhomecare.co.uk" },
+    update: {},
+    create: {
+      organisationId: org1.id,
+      email: "craig@highlandhomecare.co.uk",
+      passwordHash: password,
       role: UserRole.CARER,
-      name: "Test Carer",
+      name: "Craig Thomson",
       isActive: true,
     },
   });
 
-  console.log(`✅ Carer user: ${carerUser.email}`);
-
-  // Staff member
-  const staff = await prisma.staffMember.upsert({
-    where: { id: "00000000-0000-0000-0000-000000000010" },
+  await prisma.user.upsert({
+    where: { email: "emma@highlandhomecare.co.uk" },
     update: {},
     create: {
-      id: "00000000-0000-0000-0000-000000000010",
-      organisationId: org.id,
-      firstName: "Test",
-      lastName: "Carer",
-      roleType: StaffRoleType.CARER,
-      employmentType: EmploymentType.FULL_TIME,
-      startDate: new Date("2024-01-01"),
-      jobTitle: "Care Assistant",
-      email: "carer@carescot-demo.co.uk",
-      status: "ACTIVE",
-      createdBy: admin.id,
-      updatedBy: admin.id,
+      organisationId: org1.id,
+      email: "emma@highlandhomecare.co.uk",
+      passwordHash: password,
+      role: UserRole.OFFICE_STAFF,
+      name: "Emma Fraser",
+      isActive: true,
     },
   });
 
-  // Link carer user to staff record
-  await prisma.user.update({
-    where: { id: carerUser.id },
-    data: { staffMemberId: staff.id },
+  console.log(`✅ Org 1 users: sarah, david, fiona, craig, emma`);
+
+  // Staff member record for Craig (CARER)
+  const craigStaffData = {
+    organisationId: org1.id,
+    firstName: "Craig",
+    lastName: "Thomson",
+    roleType: StaffRoleType.CARER,
+    employmentType: EmploymentType.FULL_TIME,
+    startDate: new Date("2024-01-01"),
+    jobTitle: "Care Assistant",
+    email: "craig@highlandhomecare.co.uk",
+    status: StaffStatus.ACTIVE,
+    createdBy: sarah.id,
+    updatedBy: sarah.id,
+  };
+  const craigStaff = await prisma.staffMember.upsert({
+    where: { id: "00000000-0000-0000-0000-000000000010" },
+    update: craigStaffData,
+    create: { id: "00000000-0000-0000-0000-000000000010", ...craigStaffData },
   });
+  await prisma.user.update({
+    where: { id: craig.id },
+    data: { staffMemberId: craigStaff.id },
+  });
+  console.log(`✅ Staff member: ${craigStaff.firstName} ${craigStaff.lastName}`);
 
-  console.log(`✅ Staff member: ${staff.firstName} ${staff.lastName}`);
-
-  // Sample service user
-  const serviceUser = await prisma.serviceUser.upsert({
+  // Sample service user for Org 1
+  await prisma.serviceUser.upsert({
     where: { id: "00000000-0000-0000-0000-000000000020" },
     update: {},
     create: {
       id: "00000000-0000-0000-0000-000000000020",
-      organisationId: org.id,
+      organisationId: org1.id,
       firstName: "Mary",
       lastName: "MacDonald",
       dateOfBirth: new Date("1940-06-15"),
       chiNumber: "1506400001",
       addressLine1: "42 Glen Road",
-      city: "Edinburgh",
-      postcode: "EH2 2BB",
-      phonePrimary: "0131 000 0002",
-      gpName: "Dr. Campbell",
-      gpPractice: "Morningside Medical",
-      gpPhone: "0131 000 0010",
+      city: "Inverness",
+      postcode: "IV2 3AA",
+      phonePrimary: "01463 000001",
+      gpName: "Dr. Stewart",
+      gpPractice: "Inverness Medical Centre",
+      gpPhone: "01463 000010",
       status: "ACTIVE",
-      createdBy: admin.id,
-      updatedBy: admin.id,
+      createdBy: sarah.id,
+      updatedBy: sarah.id,
+    },
+  });
+  console.log(`✅ Service user: Mary MacDonald (Org 1)\n`);
+
+  // -------------------------------------------------------------------------
+  // Organisation 2: Moray Care Services
+  // -------------------------------------------------------------------------
+  const org2Data = {
+    name: "Moray Care Services",
+    careInspectorateRegNumber: "CS2024000002",
+    registeredAddress: "8 High Street, Elgin, IV30 1BU",
+    registeredManagerName: "James Grant",
+    isActive: true,
+  };
+  const org2 = await prisma.organisation.upsert({
+    where: { id: "00000000-0000-0000-0000-000000000002" },
+    update: org2Data,
+    create: { id: "00000000-0000-0000-0000-000000000002", ...org2Data },
+  });
+  console.log(`✅ Organisation 2: ${org2.name}`);
+
+  const james = await prisma.user.upsert({
+    where: { email: "james@moraycare.co.uk" },
+    update: {},
+    create: {
+      organisationId: org2.id,
+      email: "james@moraycare.co.uk",
+      passwordHash: password,
+      role: UserRole.ORG_ADMIN,
+      name: "James Grant",
+      isActive: true,
     },
   });
 
-  console.log(
-    `✅ Service user: ${serviceUser.firstName} ${serviceUser.lastName}`
-  );
+  await prisma.user.upsert({
+    where: { email: "laura@moraycare.co.uk" },
+    update: {},
+    create: {
+      organisationId: org2.id,
+      email: "laura@moraycare.co.uk",
+      passwordHash: password,
+      role: UserRole.MANAGER,
+      name: "Laura Morrison",
+      isActive: true,
+    },
+  });
 
-  console.log("\n🎉 Seed complete!\n");
-  console.log("Login credentials:");
-  console.log("  Admin:   admin@carescot-demo.co.uk / admin123!");
-  console.log("  Manager: manager@carescot-demo.co.uk / manager123!");
-  console.log("  Carer:   carer@carescot-demo.co.uk / carer123!\n");
+  console.log(`✅ Org 2 users: james, laura`);
+
+  // Sample service user for Org 2
+  await prisma.serviceUser.upsert({
+    where: { id: "00000000-0000-0000-0000-000000000021" },
+    update: {},
+    create: {
+      id: "00000000-0000-0000-0000-000000000021",
+      organisationId: org2.id,
+      firstName: "Robert",
+      lastName: "Gordon",
+      dateOfBirth: new Date("1945-03-20"),
+      chiNumber: "2003450001",
+      addressLine1: "12 Cooper Park",
+      city: "Elgin",
+      postcode: "IV30 1ES",
+      phonePrimary: "01343 000001",
+      gpName: "Dr. Reid",
+      gpPractice: "Elgin Medical Practice",
+      gpPhone: "01343 000010",
+      status: "ACTIVE",
+      createdBy: james.id,
+      updatedBy: james.id,
+    },
+  });
+  console.log(`✅ Service user: Robert Gordon (Org 2)\n`);
+
+  console.log("🎉 Seed complete!\n");
+  console.log("Login credentials (all passwords: Password123!):");
+  console.log("");
+  console.log("  Org 1 — Highland Home Care Ltd:");
+  console.log("    sarah@highlandhomecare.co.uk   ORG_ADMIN");
+  console.log("    david@highlandhomecare.co.uk   MANAGER");
+  console.log("    fiona@highlandhomecare.co.uk   SENIOR_CARER");
+  console.log("    craig@highlandhomecare.co.uk   CARER");
+  console.log("    emma@highlandhomecare.co.uk    OFFICE_STAFF");
+  console.log("");
+  console.log("  Org 2 — Moray Care Services:");
+  console.log("    james@moraycare.co.uk          ORG_ADMIN");
+  console.log("    laura@moraycare.co.uk          MANAGER");
 }
 
 main()

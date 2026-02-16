@@ -130,6 +130,27 @@ export const clientsRouter = router({
       });
     }),
 
+  updateStatus: protectedProcedure
+    .input(
+      z.object({
+        id: z.string().uuid(),
+        status: z.nativeEnum(ServiceUserStatus),
+        dischargeDate: z.coerce.date().optional(),
+        dischargeReason: z.string().optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { organisationId, id: userId } = ctx.user as {
+        organisationId: string;
+        id: string;
+      };
+      const { id, ...data } = input;
+      return ctx.prisma.serviceUser.update({
+        where: { id, organisationId },
+        data: { ...data, updatedBy: userId },
+      });
+    }),
+
   update: protectedProcedure
     .input(
       z.object({

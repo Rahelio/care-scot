@@ -1,10 +1,11 @@
 "use client";
 
-import { useForm } from "react-hook-form";
+import { useForm, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import { Plus, Trash2 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -19,6 +20,15 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+
+// z.boolean() — NOT z.boolean().default(false) — avoids input/output type split with zodResolver
+const contactSchema = z.object({
+  contactName: z.string().min(1, "Name required"),
+  relationship: z.string().optional(),
+  phone: z.string().optional(),
+  isNextOfKin: z.boolean(),
+  isEmergencyContact: z.boolean(),
+});
 
 const schema = z.object({
   firstName: z.string().min(1, "Required"),
@@ -40,6 +50,7 @@ const schema = z.object({
   interpreterRequired: z.boolean().optional(),
   culturalReligiousNeeds: z.string().optional(),
   dietaryRequirements: z.string().optional(),
+  contacts: z.array(contactSchema),
 });
 
 type FormValues = z.infer<typeof schema>;
@@ -59,45 +70,65 @@ export function ServiceUserForm({ defaultValues, mode, clientId }: ServiceUserFo
       firstName: "",
       lastName: "",
       dateOfBirth: "",
+      contacts: [],
+      interpreterRequired: false,
       ...defaultValues,
     },
   });
 
-  const createMutation = trpc.clients.create.useMutation({
-    onSuccess: (data) => {
-      toast.success("Service user created");
-      router.push(`/clients/${data.id}`);
-    },
-    onError: (err) => toast.error(err.message),
+  const { fields, append, remove } = useFieldArray({
+    control: form.control,
+    name: "contacts",
   });
 
-  const updateMutation = trpc.clients.update.useMutation({
-    onSuccess: () => {
-      toast.success("Service user updated");
-      router.push(`/clients/${clientId}`);
-    },
-    onError: (err) => toast.error(err.message),
-  });
+  const createMutation = trpc.clients.create.useMutation();
+  const updateMutation = trpc.clients.update.useMutation();
+  const addContactMutation = trpc.clients.addContact.useMutation();
 
-  const isPending = createMutation.isPending || updateMutation.isPending;
+  const isPending =
+    createMutation.isPending ||
+    updateMutation.isPending ||
+    addContactMutation.isPending;
 
-  function onSubmit(values: FormValues) {
-    const payload = {
-      ...values,
-      dateOfBirth: new Date(values.dateOfBirth),
-      email: values.email || undefined,
+  async function onSubmit(values: FormValues) {
+    const { contacts, ...coreValues } = values;
+    const corePayload = {
+      ...coreValues,
+      dateOfBirth: new Date(coreValues.dateOfBirth),
+      email: coreValues.email || undefined,
     };
 
-    if (mode === "create") {
-      createMutation.mutate(payload);
-    } else if (clientId) {
-      updateMutation.mutate({ id: clientId, ...payload });
+    try {
+      if (mode === "create") {
+        const serviceUser = await createMutation.mutateAsync(corePayload);
+
+        if (contacts.length > 0) {
+          await Promise.all(
+            contacts.map((contact) =>
+              addContactMutation.mutateAsync({
+                serviceUserId: serviceUser.id,
+                ...contact,
+              })
+            )
+          );
+        }
+
+        toast.success("Service user created");
+        router.push(`/clients/${serviceUser.id}`);
+      } else if (clientId) {
+        await updateMutation.mutateAsync({ id: clientId, ...corePayload });
+        toast.success("Service user updated");
+        router.push(`/clients/${clientId}`);
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "An error occurred");
     }
   }
 
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+        {/* ── Personal Details ──────────────────────────────── */}
         <Card>
           <CardHeader>
             <CardTitle className="text-base">Personal Details</CardTitle>
@@ -158,6 +189,7 @@ export function ServiceUserForm({ defaultValues, mode, clientId }: ServiceUserFo
           </CardContent>
         </Card>
 
+        {/* ── Contact Details ───────────────────────────────── */}
         <Card>
           <CardHeader>
             <CardTitle className="text-base">Contact Details</CardTitle>
@@ -257,9 +289,10 @@ export function ServiceUserForm({ defaultValues, mode, clientId }: ServiceUserFo
           </CardContent>
         </Card>
 
+        {/* ── GP & Healthcare ───────────────────────────────── */}
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">GP Details</CardTitle>
+            <CardTitle className="text-base">GP &amp; Healthcare</CardTitle>
           </CardHeader>
           <CardContent className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <FormField
@@ -304,9 +337,10 @@ export function ServiceUserForm({ defaultValues, mode, clientId }: ServiceUserFo
           </CardContent>
         </Card>
 
+        {/* ── Communication & Preferences ───────────────────── */}
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Preferences &amp; Needs</CardTitle>
+            <CardTitle className="text-base">Communication &amp; Preferences</CardTitle>
           </CardHeader>
           <CardContent className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <FormField
@@ -329,7 +363,7 @@ export function ServiceUserForm({ defaultValues, mode, clientId }: ServiceUserFo
                 <FormItem className="flex flex-row items-center gap-3 space-y-0 pt-6">
                   <FormControl>
                     <Checkbox
-                      checked={field.value}
+                      checked={field.value ?? false}
                       onCheckedChange={field.onChange}
                     />
                   </FormControl>
@@ -378,6 +412,142 @@ export function ServiceUserForm({ defaultValues, mode, clientId }: ServiceUserFo
             />
           </CardContent>
         </Card>
+
+        {/* ── Emergency Contacts (create mode only) ─────────── */}
+        {mode === "create" && (
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0">
+              <div>
+                <CardTitle className="text-base">Emergency Contacts</CardTitle>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Optional — can also be added after creating the service user
+                </p>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() =>
+                  append({
+                    contactName: "",
+                    relationship: "",
+                    phone: "",
+                    isNextOfKin: false,
+                    isEmergencyContact: false,
+                  })
+                }
+              >
+                <Plus className="h-4 w-4 mr-1.5" />
+                Add Contact
+              </Button>
+            </CardHeader>
+            <CardContent>
+              {fields.length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-3 border rounded-lg">
+                  No contacts added yet
+                </p>
+              ) : (
+                <div className="space-y-3">
+                  {fields.map((fieldItem, index) => (
+                    <div
+                      key={fieldItem.id}
+                      className="rounded-lg border p-4 space-y-3"
+                    >
+                      <div className="flex items-center justify-between">
+                        <p className="text-sm font-medium text-muted-foreground">
+                          Contact {index + 1}
+                        </p>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                          onClick={() => remove(index)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+
+                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                        <FormField
+                          control={form.control}
+                          name={`contacts.${index}.contactName`}
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Full Name *</FormLabel>
+                              <FormControl>
+                                <Input {...field} />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                        <FormField
+                          control={form.control}
+                          name={`contacts.${index}.relationship`}
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Relationship</FormLabel>
+                              <FormControl>
+                                <Input {...field} placeholder="e.g. Daughter" />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                        <FormField
+                          control={form.control}
+                          name={`contacts.${index}.phone`}
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Phone</FormLabel>
+                              <FormControl>
+                                <Input type="tel" {...field} />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                        <div className="flex flex-col gap-2.5 justify-end pb-0.5">
+                          <FormField
+                            control={form.control}
+                            name={`contacts.${index}.isNextOfKin`}
+                            render={({ field }) => (
+                              <FormItem className="flex flex-row items-center gap-2.5 space-y-0">
+                                <FormControl>
+                                  <Checkbox
+                                    checked={field.value}
+                                    onCheckedChange={field.onChange}
+                                  />
+                                </FormControl>
+                                <FormLabel className="font-normal">Next of kin</FormLabel>
+                              </FormItem>
+                            )}
+                          />
+                          <FormField
+                            control={form.control}
+                            name={`contacts.${index}.isEmergencyContact`}
+                            render={({ field }) => (
+                              <FormItem className="flex flex-row items-center gap-2.5 space-y-0">
+                                <FormControl>
+                                  <Checkbox
+                                    checked={field.value}
+                                    onCheckedChange={field.onChange}
+                                  />
+                                </FormControl>
+                                <FormLabel className="font-normal">Emergency contact</FormLabel>
+                              </FormItem>
+                            )}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
 
         <div className="flex justify-end gap-3">
           <Button
