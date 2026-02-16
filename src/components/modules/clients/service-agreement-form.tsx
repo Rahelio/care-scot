@@ -49,11 +49,19 @@ function toNum(s: string | undefined): number | undefined {
 interface ServiceAgreementFormProps {
   serviceUserId: string;
   clientName: string;
+  agreementId?: string;
+  initialValues?: Partial<FormValues>;
 }
 
-export function ServiceAgreementForm({ serviceUserId, clientName }: ServiceAgreementFormProps) {
+export function ServiceAgreementForm({
+  serviceUserId,
+  clientName,
+  agreementId,
+  initialValues,
+}: ServiceAgreementFormProps) {
   const router = useRouter();
   const utils = trpc.useUtils();
+  const isEdit = Boolean(agreementId);
 
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
@@ -62,10 +70,11 @@ export function ServiceAgreementForm({ serviceUserId, clientName }: ServiceAgree
       signedByServiceUser: false,
       signedByProvider: false,
       inspectionReportProvided: false,
+      ...initialValues,
     },
   });
 
-  const mutation = trpc.clients.createServiceAgreement.useMutation({
+  const createMutation = trpc.clients.createServiceAgreement.useMutation({
     onSuccess: () => {
       toast.success("Service agreement saved");
       utils.clients.listServiceAgreements.invalidate({ serviceUserId });
@@ -74,9 +83,19 @@ export function ServiceAgreementForm({ serviceUserId, clientName }: ServiceAgree
     onError: (err) => toast.error(err.message),
   });
 
+  const updateMutation = trpc.clients.updateServiceAgreement.useMutation({
+    onSuccess: () => {
+      toast.success("Service agreement updated");
+      utils.clients.listServiceAgreements.invalidate({ serviceUserId });
+      router.push(`/clients/${serviceUserId}/agreement`);
+    },
+    onError: (err) => toast.error(err.message),
+  });
+
+  const isPending = createMutation.isPending || updateMutation.isPending;
+
   function onSubmit(values: FormValues) {
-    mutation.mutate({
-      serviceUserId,
+    const payload = {
       servicesDescription: values.servicesDescription,
       visitFrequency: values.visitFrequency,
       paymentTerms: values.paymentTerms,
@@ -92,14 +111,22 @@ export function ServiceAgreementForm({ serviceUserId, clientName }: ServiceAgree
       costPerHour: toNum(values.costPerHour),
       weeklyCost: toNum(values.weeklyCost),
       noticePeriodDays: toNum(values.noticePeriodDays),
-    });
+    };
+
+    if (isEdit && agreementId) {
+      updateMutation.mutate({ id: agreementId, ...payload });
+    } else {
+      createMutation.mutate({ serviceUserId, ...payload });
+    }
   }
 
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
         <div>
-          <h2 className="text-lg font-semibold">Service Agreement</h2>
+          <h2 className="text-lg font-semibold">
+            {isEdit ? "Edit Service Agreement" : "Service Agreement"}
+          </h2>
           <p className="text-sm text-muted-foreground">For {clientName}</p>
         </div>
 
@@ -303,12 +330,12 @@ export function ServiceAgreementForm({ serviceUserId, clientName }: ServiceAgree
             type="button"
             variant="outline"
             onClick={() => router.back()}
-            disabled={mutation.isPending}
+            disabled={isPending}
           >
             Cancel
           </Button>
-          <Button type="submit" disabled={mutation.isPending}>
-            {mutation.isPending ? "Saving…" : "Save Agreement"}
+          <Button type="submit" disabled={isPending}>
+            {isPending ? "Saving…" : isEdit ? "Update Agreement" : "Save Agreement"}
           </Button>
         </div>
       </form>

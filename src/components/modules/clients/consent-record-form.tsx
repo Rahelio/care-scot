@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -58,6 +59,7 @@ type FormValues = z.infer<typeof schema>;
 
 interface ConsentRecordFormProps {
   serviceUserId: string;
+  initialConsentType?: ConsentType;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSuccess: () => void;
@@ -65,6 +67,7 @@ interface ConsentRecordFormProps {
 
 export function ConsentRecordForm({
   serviceUserId,
+  initialConsentType,
   open,
   onOpenChange,
   onSuccess,
@@ -74,11 +77,19 @@ export function ConsentRecordForm({
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: {
+      consentType: initialConsentType,
       consentGiven: true,
       capacityAssessed: false,
       consentDate: new Date().toISOString().split("T")[0],
     },
   });
+
+  // Sync initialConsentType when dialog opens
+  useEffect(() => {
+    if (open && initialConsentType) {
+      form.setValue("consentType", initialConsentType);
+    }
+  }, [open, initialConsentType, form]);
 
   const mutation = trpc.clients.createConsentRecord.useMutation({
     onSuccess: () => {

@@ -750,6 +750,71 @@ export const clientsRouter = router({
       });
     }),
 
+  updateServiceAgreement: protectedProcedure
+    .input(
+      z.object({
+        id: z.string().uuid(),
+        servicesDescription: z.string().optional(),
+        visitFrequency: z.string().optional(),
+        visitDurationMinutes: z.number().optional(),
+        costPerVisit: z.number().optional(),
+        costPerHour: z.number().optional(),
+        weeklyCost: z.number().optional(),
+        paymentTerms: z.string().optional(),
+        noticePeriodDays: z.number().optional(),
+        startDate: z.coerce.date().optional(),
+        endDate: z.coerce.date().optional(),
+        signedByServiceUser: z.boolean().optional(),
+        signedByRepresentative: z.string().optional(),
+        signedByProvider: z.boolean().optional(),
+        agreementDate: z.coerce.date().optional(),
+        inspectionReportProvided: z.boolean().optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { organisationId, id: userId } = ctx.user as {
+        organisationId: string;
+        id: string;
+      };
+      const { id, ...data } = input;
+      await ctx.prisma.serviceAgreement.findUniqueOrThrow({
+        where: { id, organisationId },
+      });
+      return ctx.prisma.serviceAgreement.update({
+        where: { id },
+        data: { ...data, updatedBy: userId },
+      });
+    }),
+
+  updateHealthRecord: protectedProcedure
+    .input(
+      z.object({
+        id: z.string().uuid(),
+        title: z.string().min(1).optional(),
+        description: z.string().optional(),
+        severity: z.string().optional(),
+        recordedDate: z.coerce.date().optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { organisationId, id: userId } = ctx.user as {
+        organisationId: string;
+        id: string;
+      };
+      const { id, ...data } = input;
+      await ctx.prisma.healthRecord.findUniqueOrThrow({
+        where: { id, organisationId },
+      });
+      return ctx.prisma.healthRecord.update({
+        where: { id },
+        data: {
+          ...data,
+          severity: data.severity as never,
+          updatedBy: userId,
+        },
+      });
+    }),
+
   // ─────────────────────────────────────────
   // CARE VISIT RECORDS
   // ─────────────────────────────────────────

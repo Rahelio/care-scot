@@ -2,7 +2,7 @@
 
 import { use } from "react";
 import Link from "next/link";
-import { Plus, CheckCircle, XCircle } from "lucide-react";
+import { Plus, CheckCircle, XCircle, Pencil } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -51,10 +51,18 @@ export default function AgreementPage({
           {agreements.map((agreement) => (
             <Card key={agreement.id}>
               <CardHeader>
-                <CardTitle className="text-base">
-                  Agreement from {formatDate(agreement.startDate)}
-                  {agreement.endDate && ` to ${formatDate(agreement.endDate)}`}
-                </CardTitle>
+                <div className="flex items-start justify-between gap-2">
+                  <CardTitle className="text-base">
+                    Agreement from {formatDate(agreement.startDate)}
+                    {agreement.endDate && ` to ${formatDate(agreement.endDate)}`}
+                  </CardTitle>
+                  <Button asChild variant="ghost" size="sm" className="shrink-0">
+                    <Link href={`/clients/${id}/agreement/${agreement.id}/edit`}>
+                      <Pencil className="h-3.5 w-3.5 mr-1" />
+                      Edit
+                    </Link>
+                  </Button>
+                </div>
               </CardHeader>
               <CardContent className="space-y-4">
                 {agreement.servicesDescription && (

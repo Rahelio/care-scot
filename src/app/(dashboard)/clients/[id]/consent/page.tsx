@@ -1,22 +1,42 @@
 "use client";
 
 import { use, useState } from "react";
-import { Plus, CheckCircle, XCircle } from "lucide-react";
+import { Plus, CheckCircle, XCircle, AlertCircle } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ConsentRecordForm } from "@/components/modules/clients/consent-record-form";
 import { formatDate } from "@/lib/utils";
 import type { ConsentType } from "@prisma/client";
 
-const CONSENT_TYPE_LABELS: Record<ConsentType, string> = {
-  CARE_AND_SUPPORT: "Care and Support",
-  INFORMATION_SHARING: "Information Sharing",
-  MEDICATION: "Medication Administration",
-  PHOTOGRAPHY: "Photography / Video",
-  OTHER: "Other",
-};
+const CONSENT_TYPES: { value: ConsentType; label: string; description: string }[] = [
+  {
+    value: "CARE_AND_SUPPORT",
+    label: "Care & Support",
+    description: "Consent to receive care and support services",
+  },
+  {
+    value: "INFORMATION_SHARING",
+    label: "Information Sharing",
+    description: "Consent to share information with third parties",
+  },
+  {
+    value: "MEDICATION",
+    label: "Medication Administration",
+    description: "Consent for medication administration",
+  },
+  {
+    value: "PHOTOGRAPHY",
+    label: "Photography / Video",
+    description: "Consent for photographs or video recordings",
+  },
+  {
+    value: "OTHER",
+    label: "Other",
+    description: "Other consent arrangements",
+  },
+];
 
 export default function ConsentPage({
   params,
@@ -25,6 +45,7 @@ export default function ConsentPage({
 }) {
   const { id } = use(params);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [selectedType, setSelectedType] = useState<ConsentType | undefined>();
   const utils = trpc.useUtils();
 
   const { data: records, isPending } = trpc.clients.listConsentRecords.useQuery({
@@ -33,6 +54,21 @@ export default function ConsentPage({
 
   if (isPending) {
     return <div className="py-8 text-center text-muted-foreground">Loading…</div>;
+  }
+
+  // Group by type, sorted most-recent-first within each group
+  const byType = Object.fromEntries(
+    CONSENT_TYPES.map(({ value }) => [
+      value,
+      (records ?? [])
+        .filter((r) => r.consentType === value)
+        .sort((a, b) => new Date(b.consentDate).getTime() - new Date(a.consentDate).getTime()),
+    ])
+  ) as Record<ConsentType, typeof records>;
+
+  function openForm(type?: ConsentType) {
+    setSelectedType(type);
+    setDialogOpen(true);
   }
 
   return (
@@ -44,91 +80,120 @@ export default function ConsentPage({
             Consent records cannot be deleted — only superseded by a new record
           </p>
         </div>
-        <Button onClick={() => setDialogOpen(true)}>
+        <Button onClick={() => openForm()}>
           <Plus className="h-4 w-4 mr-2" />
           Record Consent
         </Button>
       </div>
 
-      {!records?.length ? (
-        <Card>
-          <CardContent className="py-10 text-center">
-            <p className="text-muted-foreground mb-4">No consent records yet.</p>
-            <Button variant="outline" onClick={() => setDialogOpen(true)}>
-              Add First Consent Record
-            </Button>
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="space-y-3">
-          {records.map((record) => (
-            <Card key={record.id}>
-              <CardContent className="p-4">
-                <div className="flex items-start justify-between gap-4">
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <p className="font-medium">
-                        {CONSENT_TYPE_LABELS[record.consentType] ?? record.consentType}
-                      </p>
-                      <Badge
-                        variant="outline"
-                        className={
-                          record.consentGiven
-                            ? "bg-green-100 text-green-800 border-green-200"
-                            : "bg-red-100 text-red-800 border-red-200"
-                        }
-                      >
-                        {record.consentGiven ? (
-                          <>
-                            <CheckCircle className="h-3 w-3 mr-1" />
-                            Consent Given
-                          </>
-                        ) : (
-                          <>
-                            <XCircle className="h-3 w-3 mr-1" />
-                            Consent Withheld
-                          </>
-                        )}
-                      </Badge>
-                    </div>
-                    <p className="text-sm text-muted-foreground">
-                      {formatDate(record.consentDate)}
-                      {record.signedBy && ` — Signed by ${record.signedBy}`}
-                      {record.relationshipToServiceUser &&
-                        ` (${record.relationshipToServiceUser})`}
-                    </p>
-                    {record.reviewDate && (
-                      <p className="text-sm text-muted-foreground">
-                        Review: {formatDate(record.reviewDate)}
-                      </p>
-                    )}
-                  </div>
-                </div>
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {CONSENT_TYPES.map(({ value, label, description }) => {
+          const typeRecords = byType[value] ?? [];
+          const current = typeRecords[0];
 
-                {record.capacityAssessed && (
-                  <div className="mt-2 pt-2 border-t text-sm space-y-1">
-                    <p className="font-medium">Capacity Assessed</p>
-                    {record.capacityOutcome && (
-                      <p className="text-muted-foreground">{record.capacityOutcome}</p>
-                    )}
-                    {record.awiDocumentation && (
-                      <p className="text-muted-foreground">
-                        AWI Reference: {record.awiDocumentation}
+          return (
+            <Card
+              key={value}
+              className={
+                current
+                  ? current.consentGiven
+                    ? "border-green-200"
+                    : "border-red-200"
+                  : "border-dashed"
+              }
+            >
+              <CardHeader className="pb-2">
+                <div className="flex items-start justify-between gap-2">
+                  <CardTitle className="text-sm font-medium leading-snug">{label}</CardTitle>
+                  {current ? (
+                    <Badge
+                      variant="outline"
+                      className={
+                        current.consentGiven
+                          ? "bg-green-100 text-green-800 border-green-200 shrink-0"
+                          : "bg-red-100 text-red-800 border-red-200 shrink-0"
+                      }
+                    >
+                      {current.consentGiven ? (
+                        <>
+                          <CheckCircle className="h-3 w-3 mr-1" />
+                          Given
+                        </>
+                      ) : (
+                        <>
+                          <XCircle className="h-3 w-3 mr-1" />
+                          Withheld
+                        </>
+                      )}
+                    </Badge>
+                  ) : (
+                    <Badge variant="outline" className="text-muted-foreground shrink-0 text-xs">
+                      Not recorded
+                    </Badge>
+                  )}
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                {current ? (
+                  <>
+                    <p className="text-xs text-muted-foreground">
+                      {formatDate(current.consentDate)}
+                      {current.signedBy && ` — ${current.signedBy}`}
+                      {current.relationshipToServiceUser &&
+                        ` (${current.relationshipToServiceUser})`}
+                    </p>
+                    {current.reviewDate && (
+                      <p className="text-xs text-muted-foreground">
+                        Review due: {formatDate(current.reviewDate)}
                       </p>
                     )}
-                    {record.bestInterestDecision && (
-                      <p className="text-muted-foreground">{record.bestInterestDecision}</p>
+                    {current.capacityAssessed && (
+                      <div className="mt-2 p-2 bg-amber-50 border border-amber-200 rounded text-xs space-y-1">
+                        <p className="font-medium flex items-center gap-1 text-amber-800">
+                          <AlertCircle className="h-3 w-3" />
+                          Capacity Assessed (AWI)
+                        </p>
+                        {current.awiDocumentation && (
+                          <p className="text-amber-700">Ref: {current.awiDocumentation}</p>
+                        )}
+                        {current.capacityOutcome && (
+                          <p className="text-amber-700">{current.capacityOutcome}</p>
+                        )}
+                        {current.bestInterestDecision && (
+                          <p className="text-amber-700">
+                            Best Interest: {current.bestInterestDecision}
+                          </p>
+                        )}
+                      </div>
                     )}
-                  </div>
+                    {typeRecords.length > 1 && (
+                      <p className="text-xs text-muted-foreground">
+                        +{typeRecords.length - 1} previous record
+                        {typeRecords.length > 2 ? "s" : ""}
+                      </p>
+                    )}
+                  </>
+                ) : (
+                  <p className="text-xs text-muted-foreground">{description}</p>
                 )}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="w-full mt-2"
+                  onClick={() => openForm(value)}
+                >
+                  <Plus className="h-3 w-3 mr-1" />
+                  {current ? "Supersede" : "Record"}
+                </Button>
               </CardContent>
             </Card>
-          ))}
-        </div>
-      )}
+          );
+        })}
+      </div>
 
       <ConsentRecordForm
         serviceUserId={id}
+        initialConsentType={selectedType}
         open={dialogOpen}
         onOpenChange={setDialogOpen}
         onSuccess={() => utils.clients.listConsentRecords.invalidate({ serviceUserId: id })}

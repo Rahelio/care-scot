@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -60,6 +61,7 @@ type FormValues = z.infer<typeof schema>;
 
 interface HealthRecordFormProps {
   serviceUserId: string;
+  initialRecordType?: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSuccess: () => void;
@@ -67,6 +69,7 @@ interface HealthRecordFormProps {
 
 export function HealthRecordForm({
   serviceUserId,
+  initialRecordType,
   open,
   onOpenChange,
   onSuccess,
@@ -76,11 +79,17 @@ export function HealthRecordForm({
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: {
-      recordType: "",
+      recordType: initialRecordType ?? "",
       title: "",
       recordedDate: new Date().toISOString().split("T")[0],
     },
   });
+
+  useEffect(() => {
+    if (open && initialRecordType) {
+      form.setValue("recordType", initialRecordType);
+    }
+  }, [open, initialRecordType, form]);
 
   const mutation = trpc.clients.createHealthRecord.useMutation({
     onSuccess: () => {
