@@ -6,13 +6,12 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Plus, Trash2 } from "lucide-react";
+import { Plus, Trash2, Lock } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Label } from "@/components/ui/label";
 import {
   Form,
   FormControl,
@@ -23,22 +22,16 @@ import {
 } from "@/components/ui/form";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
+import { Badge } from "@/components/ui/badge";
 
 const schema = z.object({
-  visitDate: z.string().min(1, "Required"),
-  scheduledStart: z.string().min(1, "Required"),
-  scheduledEnd: z.string().min(1, "Required"),
-  actualStart: z.string().optional(),
-  actualEnd: z.string().optional(),
-  tasksCompleted: z
-    .array(
-      z.object({
-        task: z.string().min(1),
-        completed: z.boolean(),
-        notes: z.string().optional(),
-      })
-    )
-    .optional(),
+  tasksCompleted: z.array(
+    z.object({
+      task: z.string().min(1),
+      completed: z.boolean(),
+      notes: z.string().optional(),
+    })
+  ),
   wellbeingObservations: z.string().optional(),
   refusedCare: z.boolean(),
   refusedCareDetails: z.string().optional(),
@@ -49,22 +42,41 @@ const schema = z.object({
 
 type FormValues = z.infer<typeof schema>;
 
-const DEFAULT_TASKS = [
-  "Personal care",
-  "Medication",
-  "Meal preparation",
-  "Mobility",
-  "Household tasks",
-  "Companionship",
-  "Skin care",
-];
-
-interface CareVisitFormProps {
-  serviceUserId: string;
-  clientName: string;
+interface Task {
+  task: string;
+  completed: boolean;
+  notes?: string;
 }
 
-export function CareVisitForm({ serviceUserId, clientName }: CareVisitFormProps) {
+interface CareVisitEditFormProps {
+  visitId: string;
+  serviceUserId: string;
+  isLocked: boolean;
+  isManager: boolean;
+  visitDate: string;
+  scheduledStart: string;
+  scheduledEnd: string;
+  initialValues: {
+    tasksCompleted: Task[];
+    wellbeingObservations?: string;
+    refusedCare: boolean;
+    refusedCareDetails?: string;
+    familyCommunication?: string;
+    conditionChanges?: string;
+    notes?: string;
+  };
+}
+
+export function CareVisitEditForm({
+  visitId,
+  serviceUserId,
+  isLocked,
+  isManager,
+  visitDate,
+  scheduledStart,
+  scheduledEnd,
+  initialValues,
+}: CareVisitEditFormProps) {
   const router = useRouter();
   const [newTask, setNewTask] = useState("");
   const utils = trpc.useUtils();
@@ -72,15 +84,13 @@ export function CareVisitForm({ serviceUserId, clientName }: CareVisitFormProps)
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: {
-      visitDate: new Date().toISOString().split("T")[0],
-      scheduledStart: "",
-      scheduledEnd: "",
-      refusedCare: false,
-      tasksCompleted: DEFAULT_TASKS.map((task) => ({
-        task,
-        completed: false,
-        notes: "",
-      })),
+      tasksCompleted: initialValues.tasksCompleted,
+      wellbeingObservations: initialValues.wellbeingObservations ?? "",
+      refusedCare: initialValues.refusedCare,
+      refusedCareDetails: initialValues.refusedCareDetails ?? "",
+      familyCommunication: initialValues.familyCommunication ?? "",
+      conditionChanges: initialValues.conditionChanges ?? "",
+      notes: initialValues.notes ?? "",
     },
   });
 
@@ -89,9 +99,9 @@ export function CareVisitForm({ serviceUserId, clientName }: CareVisitFormProps)
     name: "tasksCompleted",
   });
 
-  const mutation = trpc.clients.createCareVisit.useMutation({
+  const mutation = trpc.clients.updateCareVisit.useMutation({
     onSuccess: () => {
-      toast.success("Care visit recorded");
+      toast.success("Care visit updated");
       utils.clients.listCareVisits.invalidate({ serviceUserId });
       router.push(`/clients/${serviceUserId}/care-records`);
     },
@@ -101,12 +111,7 @@ export function CareVisitForm({ serviceUserId, clientName }: CareVisitFormProps)
   const refusedCare = form.watch("refusedCare");
 
   function onSubmit(values: FormValues) {
-    mutation.mutate({
-      serviceUserId,
-      ...values,
-      visitDate: new Date(values.visitDate),
-      tasksCompleted: values.tasksCompleted?.filter((t) => t.task.trim()),
-    });
+    mutation.mutate({ id: visitId, ...values });
   }
 
   function addTask() {
@@ -119,83 +124,20 @@ export function CareVisitForm({ serviceUserId, clientName }: CareVisitFormProps)
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-        <div>
-          <h2 className="text-lg font-semibold">Log Care Visit</h2>
-          <p className="text-sm text-muted-foreground">For {clientName}</p>
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h2 className="text-lg font-semibold">Edit Care Visit</h2>
+            <p className="text-sm text-muted-foreground">
+              {visitDate} · {scheduledStart}–{scheduledEnd}
+            </p>
+          </div>
+          {isLocked && (
+            <Badge variant="outline" className="shrink-0">
+              <Lock className="h-3 w-3 mr-1" />
+              Manager override
+            </Badge>
+          )}
         </div>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Visit Time</CardTitle>
-          </CardHeader>
-          <CardContent className="grid grid-cols-2 gap-4">
-            <FormField
-              control={form.control}
-              name="visitDate"
-              render={({ field }) => (
-                <FormItem className="col-span-2">
-                  <FormLabel>Visit Date *</FormLabel>
-                  <FormControl>
-                    <Input type="date" {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <FormField
-              control={form.control}
-              name="scheduledStart"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Scheduled Start *</FormLabel>
-                  <FormControl>
-                    <Input type="time" {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <FormField
-              control={form.control}
-              name="scheduledEnd"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Scheduled End *</FormLabel>
-                  <FormControl>
-                    <Input type="time" {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <FormField
-              control={form.control}
-              name="actualStart"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Actual Start</FormLabel>
-                  <FormControl>
-                    <Input type="time" {...field} value={field.value ?? ""} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <FormField
-              control={form.control}
-              name="actualEnd"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Actual End</FormLabel>
-                  <FormControl>
-                    <Input type="time" {...field} value={field.value ?? ""} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-          </CardContent>
-        </Card>
 
         <Card>
           <CardHeader>
@@ -241,7 +183,6 @@ export function CareVisitForm({ serviceUserId, clientName }: CareVisitFormProps)
                 </Button>
               </div>
             ))}
-
             <Separator />
             <div className="flex gap-2">
               <Input
@@ -391,7 +332,7 @@ export function CareVisitForm({ serviceUserId, clientName }: CareVisitFormProps)
             Cancel
           </Button>
           <Button type="submit" disabled={mutation.isPending} className="min-w-32">
-            {mutation.isPending ? "Saving…" : "Save Visit Record"}
+            {mutation.isPending ? "Saving…" : "Save Changes"}
           </Button>
         </div>
       </form>

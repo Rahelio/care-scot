@@ -2,7 +2,7 @@
 
 import { use } from "react";
 import Link from "next/link";
-import { Plus, Calendar } from "lucide-react";
+import { Plus, Calendar, AlertTriangle, Pencil } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -14,6 +14,9 @@ const REVIEW_TYPE_LABELS = {
   NEEDS_CHANGE: "Needs Change",
   ANNUAL: "Annual",
 } as const;
+
+const MS_PER_YEAR = 365 * 24 * 60 * 60 * 1000;
+const MODULE_NOW = Date.now();
 
 export default function ReviewsPage({
   params,
@@ -30,6 +33,16 @@ export default function ReviewsPage({
     return <div className="py-8 text-center text-muted-foreground">Loading…</div>;
   }
 
+  // Annual review overdue check
+  const lastAnnual = reviews?.find((r) => r.reviewType === "ANNUAL");
+  const annualOverdueMonths = lastAnnual
+    ? Math.floor(
+        (MODULE_NOW - lastAnnual.reviewDate.getTime()) / (MS_PER_YEAR / 12)
+      )
+    : null;
+  const annualOverdue = annualOverdueMonths !== null && annualOverdueMonths > 12;
+  const neverHadAnnual = !lastAnnual && (reviews?.length ?? 0) > 0;
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -41,6 +54,20 @@ export default function ReviewsPage({
           </Link>
         </Button>
       </div>
+
+      {(annualOverdue || neverHadAnnual) && (
+        <div className="flex items-start gap-3 p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm">
+          <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
+          <div>
+            <p className="font-medium text-amber-800">Annual review overdue</p>
+            <p className="text-amber-700">
+              {neverHadAnnual
+                ? "No annual review has been recorded for this service user."
+                : `Last annual review was ${annualOverdueMonths} months ago. Annual reviews should occur every 12 months.`}
+            </p>
+          </div>
+        </div>
+      )}
 
       {!reviews?.length ? (
         <Card>
@@ -76,8 +103,7 @@ export default function ReviewsPage({
                     </div>
                     {review.reviewer && (
                       <p className="text-sm text-muted-foreground">
-                        Reviewed by:{" "}
-                        {review.reviewer.name ?? review.reviewer.email}
+                        Reviewed by: {review.reviewer.name ?? review.reviewer.email}
                       </p>
                     )}
                     {review.nextReviewDate && (
@@ -87,6 +113,12 @@ export default function ReviewsPage({
                       </p>
                     )}
                   </div>
+                  <Button asChild variant="ghost" size="sm" className="shrink-0">
+                    <Link href={`/clients/${id}/reviews/${review.id}/edit`}>
+                      <Pencil className="h-3.5 w-3.5 mr-1" />
+                      Edit
+                    </Link>
+                  </Button>
                 </div>
 
                 {review.serviceUserFeedback && (

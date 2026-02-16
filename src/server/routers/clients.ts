@@ -1043,6 +1043,36 @@ export const clientsRouter = router({
       });
     }),
 
+  updateReview: protectedProcedure
+    .input(
+      z.object({
+        id: z.string().uuid(),
+        reviewDate: z.coerce.date().optional(),
+        reviewType: z.enum(["SCHEDULED", "NEEDS_CHANGE", "ANNUAL"]).optional(),
+        serviceUserFeedback: z.string().optional(),
+        familyFeedback: z.string().optional(),
+        changesIdentified: z.string().optional(),
+        actionsTaken: z.string().optional(),
+        mdtMeetingNotes: z.string().optional(),
+        nextReviewDate: z.coerce.date().optional(),
+        personalPlanUpdated: z.boolean().optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { organisationId, id: userId } = ctx.user as {
+        organisationId: string;
+        id: string;
+      };
+      const { id, ...data } = input;
+      await ctx.prisma.serviceUserReview.findUniqueOrThrow({
+        where: { id, organisationId },
+      });
+      return ctx.prisma.serviceUserReview.update({
+        where: { id },
+        data: { ...data, updatedBy: userId },
+      });
+    }),
+
   /** Legacy alias kept for compatibility */
   getVisits: protectedProcedure
     .input(

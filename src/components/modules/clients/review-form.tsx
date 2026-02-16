@@ -44,11 +44,19 @@ type FormValues = z.infer<typeof schema>;
 interface ReviewFormProps {
   serviceUserId: string;
   clientName: string;
+  reviewId?: string;
+  initialValues?: Partial<FormValues>;
 }
 
-export function ReviewForm({ serviceUserId, clientName }: ReviewFormProps) {
+export function ReviewForm({
+  serviceUserId,
+  clientName,
+  reviewId,
+  initialValues,
+}: ReviewFormProps) {
   const router = useRouter();
   const utils = trpc.useUtils();
+  const isEdit = Boolean(reviewId);
 
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
@@ -56,10 +64,11 @@ export function ReviewForm({ serviceUserId, clientName }: ReviewFormProps) {
       reviewDate: new Date().toISOString().split("T")[0],
       reviewType: "SCHEDULED",
       personalPlanUpdated: false,
+      ...initialValues,
     },
   });
 
-  const mutation = trpc.clients.createReview.useMutation({
+  const createMutation = trpc.clients.createReview.useMutation({
     onSuccess: () => {
       toast.success("Review recorded");
       utils.clients.listReviews.invalidate({ serviceUserId });
@@ -68,20 +77,37 @@ export function ReviewForm({ serviceUserId, clientName }: ReviewFormProps) {
     onError: (err) => toast.error(err.message),
   });
 
+  const updateMutation = trpc.clients.updateReview.useMutation({
+    onSuccess: () => {
+      toast.success("Review updated");
+      utils.clients.listReviews.invalidate({ serviceUserId });
+      router.push(`/clients/${serviceUserId}/reviews`);
+    },
+    onError: (err) => toast.error(err.message),
+  });
+
+  const isPending = createMutation.isPending || updateMutation.isPending;
+
   function onSubmit(values: FormValues) {
-    mutation.mutate({
-      serviceUserId,
-      ...values,
+    const dates = {
       reviewDate: new Date(values.reviewDate),
       nextReviewDate: values.nextReviewDate ? new Date(values.nextReviewDate) : undefined,
-    });
+    };
+
+    if (isEdit && reviewId) {
+      updateMutation.mutate({ id: reviewId, ...values, ...dates });
+    } else {
+      createMutation.mutate({ serviceUserId, ...values, ...dates });
+    }
   }
 
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
         <div>
-          <h2 className="text-lg font-semibold">Record Review</h2>
+          <h2 className="text-lg font-semibold">
+            {isEdit ? "Edit Review" : "Record Review"}
+          </h2>
           <p className="text-sm text-muted-foreground">For {clientName}</p>
         </div>
 
@@ -241,12 +267,12 @@ export function ReviewForm({ serviceUserId, clientName }: ReviewFormProps) {
             type="button"
             variant="outline"
             onClick={() => router.back()}
-            disabled={mutation.isPending}
+            disabled={isPending}
           >
             Cancel
           </Button>
-          <Button type="submit" disabled={mutation.isPending}>
-            {mutation.isPending ? "Saving…" : "Save Review"}
+          <Button type="submit" disabled={isPending}>
+            {isPending ? "Saving…" : isEdit ? "Update Review" : "Save Review"}
           </Button>
         </div>
       </form>
