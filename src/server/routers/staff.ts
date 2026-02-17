@@ -2,6 +2,8 @@ import { z } from "zod";
 import { router, protectedProcedure } from "../trpc";
 import { StaffStatus, StaffRoleType, EmploymentType } from "@prisma/client";
 
+const MANDATORY_TRAINING_THRESHOLD = 5;
+
 export const staffRouter = router({
   list: protectedProcedure
     .input(
@@ -62,6 +64,7 @@ export const staffRouter = router({
       return ctx.prisma.staffMember.findUniqueOrThrow({
         where: { id: input.id, organisationId },
         include: {
+          users: { select: { id: true, email: true, role: true, isActive: true } },
           pvgRecords: true,
           registrations: true,
           references: true,
@@ -73,6 +76,70 @@ export const staffRouter = router({
           absenceRecords: { orderBy: { startDate: "desc" }, take: 10 },
         },
       });
+    }),
+
+  getRecruitmentStatus: protectedProcedure
+    .input(z.object({ id: z.string().uuid() }))
+    .query(async ({ ctx, input }) => {
+      const { organisationId } = ctx.user as { organisationId: string };
+      const today = new Date();
+
+      const staff = await ctx.prisma.staffMember.findUniqueOrThrow({
+        where: { id: input.id, organisationId },
+        include: {
+          pvgRecords: true,
+          registrations: true,
+          references: { select: { referenceReceived: true } },
+          healthDeclarations: { take: 1 },
+          induction: { select: { inductionStarted: true, inductionCompleted: true } },
+          trainingRecords: { select: { isMandatory: true } },
+        },
+      });
+
+      type CheckItem = { label: string; weight: number; complete: boolean };
+
+      const personalDetailsComplete =
+        Boolean(staff.firstName) &&
+        Boolean(staff.lastName) &&
+        Boolean(staff.dateOfBirth) &&
+        Boolean(staff.phone) &&
+        Boolean(staff.email);
+
+      const pvgCurrent =
+        staff.pvgRecords.length > 0 &&
+        staff.pvgRecords.some(
+          (r) => r.renewalDate == null || r.renewalDate >= today
+        );
+
+      const ssscrCurrent = staff.registrations.some(
+        (r) =>
+          r.registrationType === "SSSC" &&
+          (r.expiryDate == null || r.expiryDate >= today)
+      );
+
+      const verifiedRefs = staff.references.filter((r) => r.referenceReceived).length;
+      const mandatoryCount = staff.trainingRecords.filter((t) => t.isMandatory).length;
+
+      const checks: CheckItem[] = [
+        { label: "Personal details complete", weight: 10, complete: personalDetailsComplete },
+        { label: "Right to work verified", weight: 10, complete: staff.rightToWorkChecked },
+        { label: "PVG disclosure current", weight: 15, complete: pvgCurrent },
+        { label: "SSSC / professional registration current", weight: 15, complete: ssscrCurrent },
+        { label: "2+ references verified", weight: 15, complete: verifiedRefs >= 2 },
+        { label: "Health declaration on file", weight: 10, complete: staff.healthDeclarations.length > 0 },
+        { label: "Induction started", weight: 5, complete: Boolean(staff.induction?.inductionStarted) },
+        { label: "Induction completed", weight: 10, complete: Boolean(staff.induction?.inductionCompleted) },
+        {
+          label: `Mandatory training complete (${mandatoryCount}/${MANDATORY_TRAINING_THRESHOLD})`,
+          weight: 10,
+          complete: mandatoryCount >= MANDATORY_TRAINING_THRESHOLD,
+        },
+      ];
+
+      const percentage = checks.reduce((sum, c) => sum + (c.complete ? c.weight : 0), 0);
+      const incomplete = checks.filter((c) => !c.complete).map((c) => c.label);
+
+      return { percentage, incomplete, checks };
     }),
 
   create: protectedProcedure
@@ -92,6 +159,9 @@ export const staffRouter = router({
         addressLine2: z.string().optional(),
         city: z.string().optional(),
         postcode: z.string().optional(),
+        rightToWorkChecked: z.boolean().optional(),
+        rightToWorkDocument: z.string().optional(),
+        probationEndDate: z.date().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -110,10 +180,40 @@ export const staffRouter = router({
         id: z.string().uuid(),
         firstName: z.string().min(1).optional(),
         lastName: z.string().min(1).optional(),
+        dateOfBirth: z.date().optional(),
         jobTitle: z.string().optional(),
         phone: z.string().optional(),
         email: z.string().email().optional(),
-        status: z.nativeEnum(StaffStatus).optional(),
+        roleType: z.nativeEnum(StaffRoleType).optional(),
+        employmentType: z.nativeEnum(EmploymentType).optional(),
+        contractHoursPerWeek: z.number().optional(),
+        addressLine1: z.string().optional(),
+        addressLine2: z.string().optional(),
+        city: z.string().optional(),
+        postcode: z.string().optional(),
+        rightToWorkChecked: z.boolean().optional(),
+        rightToWorkDocument: z.string().optional(),
+        probationEndDate: z.date().optional(),
+        endDate: z.date().optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { organisationId, id: userId } = ctx.user as {
+        organisationId: string;
+        id: string;
+      };
+      const { id, ...data } = input;
+      return ctx.prisma.staffMember.update({
+        where: { id, organisationId },
+        data: { ...data, updatedBy: userId },
+      });
+    }),
+
+  updateStatus: protectedProcedure
+    .input(
+      z.object({
+        id: z.string().uuid(),
+        status: z.nativeEnum(StaffStatus),
         endDate: z.date().optional(),
       })
     )
