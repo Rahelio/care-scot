@@ -1,6 +1,11 @@
 import { z } from "zod";
+import { TRPCError } from "@trpc/server";
 import { router, protectedProcedure } from "../trpc";
-import { StaffStatus, StaffRoleType, EmploymentType } from "@prisma/client";
+import { StaffStatus, StaffRoleType, EmploymentType, DisclosureLevel, RegistrationType, ReferenceType } from "@prisma/client";
+import { requirePermission } from "../middleware/rbac";
+
+const staffReadProcedure = protectedProcedure.use(requirePermission("staff.read"));
+const staffManageProcedure = protectedProcedure.use(requirePermission("staff.manage"));
 
 const MANDATORY_TRAINING_THRESHOLD = 5;
 
@@ -284,4 +289,263 @@ export const staffRouter = router({
         data: { ...input, organisationId, createdBy: userId, updatedBy: userId },
       });
     }),
+
+  // ── PVG Records ───────────────────────────
+  pvg: router({
+    getByStaff: staffReadProcedure
+      .input(z.object({ staffMemberId: z.string().uuid() }))
+      .query(async ({ ctx, input }) => {
+        const { organisationId } = ctx.user as { organisationId: string };
+        return ctx.prisma.staffPvgRecord.findMany({
+          where: { staffMemberId: input.staffMemberId, organisationId },
+          orderBy: { createdAt: "desc" },
+        });
+      }),
+
+    create: staffManageProcedure
+      .input(
+        z.object({
+          staffMemberId: z.string().uuid(),
+          pvgMembershipNumber: z.string().optional(),
+          pvgSchemeRecordDate: z.date().optional(),
+          pvgUpdateService: z.boolean().optional(),
+          disclosureCertificateNumber: z.string().optional(),
+          disclosureDate: z.date().optional(),
+          disclosureLevel: z.nativeEnum(DisclosureLevel).optional(),
+          renewalDate: z.date().optional(),
+        })
+      )
+      .mutation(async ({ ctx, input }) => {
+        const { organisationId, id: userId } = ctx.user as { organisationId: string; id: string };
+        return ctx.prisma.staffPvgRecord.create({
+          data: { ...input, organisationId, createdBy: userId, updatedBy: userId },
+        });
+      }),
+
+    update: staffManageProcedure
+      .input(
+        z.object({
+          id: z.string().uuid(),
+          pvgMembershipNumber: z.string().optional(),
+          pvgSchemeRecordDate: z.date().optional(),
+          pvgUpdateService: z.boolean().optional(),
+          disclosureCertificateNumber: z.string().optional(),
+          disclosureDate: z.date().optional(),
+          disclosureLevel: z.nativeEnum(DisclosureLevel).optional(),
+          renewalDate: z.date().optional(),
+        })
+      )
+      .mutation(async ({ ctx, input }) => {
+        const { organisationId, id: userId } = ctx.user as { organisationId: string; id: string };
+        const { id, ...data } = input;
+        const record = await ctx.prisma.staffPvgRecord.findUniqueOrThrow({
+          where: { id },
+          select: { organisationId: true },
+        });
+        if (record.organisationId !== organisationId) {
+          throw new TRPCError({ code: "FORBIDDEN" });
+        }
+        return ctx.prisma.staffPvgRecord.update({
+          where: { id },
+          data: { ...data, updatedBy: userId },
+        });
+      }),
+  }),
+
+  // ── Registrations ─────────────────────────
+  registration: router({
+    getByStaff: staffReadProcedure
+      .input(z.object({ staffMemberId: z.string().uuid() }))
+      .query(async ({ ctx, input }) => {
+        const { organisationId } = ctx.user as { organisationId: string };
+        return ctx.prisma.staffRegistration.findMany({
+          where: { staffMemberId: input.staffMemberId, organisationId },
+          orderBy: { createdAt: "desc" },
+        });
+      }),
+
+    create: staffManageProcedure
+      .input(
+        z.object({
+          staffMemberId: z.string().uuid(),
+          registrationType: z.nativeEnum(RegistrationType),
+          registrationNumber: z.string().optional(),
+          registrationCategory: z.string().optional(),
+          expiryDate: z.date().optional(),
+          qualificationName: z.string().optional(),
+        })
+      )
+      .mutation(async ({ ctx, input }) => {
+        const { organisationId, id: userId } = ctx.user as { organisationId: string; id: string };
+        return ctx.prisma.staffRegistration.create({
+          data: { ...input, organisationId, createdBy: userId, updatedBy: userId },
+        });
+      }),
+
+    update: staffManageProcedure
+      .input(
+        z.object({
+          id: z.string().uuid(),
+          registrationType: z.nativeEnum(RegistrationType).optional(),
+          registrationNumber: z.string().optional(),
+          registrationCategory: z.string().optional(),
+          expiryDate: z.date().optional(),
+          qualificationName: z.string().optional(),
+        })
+      )
+      .mutation(async ({ ctx, input }) => {
+        const { organisationId, id: userId } = ctx.user as { organisationId: string; id: string };
+        const { id, ...data } = input;
+        const record = await ctx.prisma.staffRegistration.findUniqueOrThrow({
+          where: { id },
+          select: { organisationId: true },
+        });
+        if (record.organisationId !== organisationId) {
+          throw new TRPCError({ code: "FORBIDDEN" });
+        }
+        return ctx.prisma.staffRegistration.update({
+          where: { id },
+          data: { ...data, updatedBy: userId },
+        });
+      }),
+  }),
+
+  // ── References ────────────────────────────
+  reference: router({
+    getByStaff: staffReadProcedure
+      .input(z.object({ staffMemberId: z.string().uuid() }))
+      .query(async ({ ctx, input }) => {
+        const { organisationId } = ctx.user as { organisationId: string };
+        return ctx.prisma.staffReference.findMany({
+          where: { staffMemberId: input.staffMemberId, organisationId },
+          orderBy: { createdAt: "desc" },
+        });
+      }),
+
+    create: staffManageProcedure
+      .input(
+        z.object({
+          staffMemberId: z.string().uuid(),
+          refereeName: z.string().min(1),
+          refereeOrganisation: z.string().optional(),
+          refereeRole: z.string().optional(),
+          refereeContact: z.string().optional(),
+          referenceType: z.nativeEnum(ReferenceType),
+          referenceReceived: z.boolean().optional(),
+          referenceDate: z.date().optional(),
+          employmentGapExplanation: z.string().optional(),
+        })
+      )
+      .mutation(async ({ ctx, input }) => {
+        const { organisationId, id: userId } = ctx.user as { organisationId: string; id: string };
+        return ctx.prisma.staffReference.create({
+          data: { ...input, organisationId, createdBy: userId, updatedBy: userId },
+        });
+      }),
+
+    update: staffManageProcedure
+      .input(
+        z.object({
+          id: z.string().uuid(),
+          refereeName: z.string().min(1).optional(),
+          refereeOrganisation: z.string().optional(),
+          refereeRole: z.string().optional(),
+          refereeContact: z.string().optional(),
+          referenceType: z.nativeEnum(ReferenceType).optional(),
+          referenceReceived: z.boolean().optional(),
+          referenceDate: z.date().optional(),
+          referenceVerifiedBy: z.string().uuid().optional(),
+          employmentGapExplanation: z.string().optional(),
+        })
+      )
+      .mutation(async ({ ctx, input }) => {
+        const { organisationId, id: userId } = ctx.user as { organisationId: string; id: string };
+        const { id, ...data } = input;
+        const record = await ctx.prisma.staffReference.findUniqueOrThrow({
+          where: { id },
+          select: { organisationId: true },
+        });
+        if (record.organisationId !== organisationId) {
+          throw new TRPCError({ code: "FORBIDDEN" });
+        }
+        return ctx.prisma.staffReference.update({
+          where: { id },
+          data: { ...data, updatedBy: userId },
+        });
+      }),
+  }),
+
+  // ── Health Declarations ───────────────────
+  health: router({
+    getByStaff: staffReadProcedure
+      .input(z.object({ staffMemberId: z.string().uuid() }))
+      .query(async ({ ctx, input }) => {
+        const { organisationId } = ctx.user as { organisationId: string };
+        return ctx.prisma.staffHealthDeclaration.findMany({
+          where: { staffMemberId: input.staffMemberId, organisationId },
+          orderBy: { declarationDate: "desc" },
+        });
+      }),
+
+    create: staffManageProcedure
+      .input(
+        z.object({
+          staffMemberId: z.string().uuid(),
+          declarationDate: z.date(),
+          fitToWork: z.boolean(),
+          ohAssessmentRequired: z.boolean().optional(),
+          ohAssessmentDate: z.date().optional(),
+          immunisations: z
+            .object({
+              hepatitisB: z.string().optional(),
+              covid: z.string().optional(),
+              flu: z.string().optional(),
+            })
+            .optional(),
+          fitnessToWorkDate: z.date().optional(),
+          notes: z.string().optional(),
+        })
+      )
+      .mutation(async ({ ctx, input }) => {
+        const { organisationId, id: userId } = ctx.user as { organisationId: string; id: string };
+        return ctx.prisma.staffHealthDeclaration.create({
+          data: { ...input, organisationId, createdBy: userId, updatedBy: userId },
+        });
+      }),
+
+    update: staffManageProcedure
+      .input(
+        z.object({
+          id: z.string().uuid(),
+          declarationDate: z.date().optional(),
+          fitToWork: z.boolean().optional(),
+          ohAssessmentRequired: z.boolean().optional(),
+          ohAssessmentDate: z.date().optional(),
+          immunisations: z
+            .object({
+              hepatitisB: z.string().optional(),
+              covid: z.string().optional(),
+              flu: z.string().optional(),
+            })
+            .optional(),
+          fitnessToWorkDate: z.date().optional(),
+          notes: z.string().optional(),
+        })
+      )
+      .mutation(async ({ ctx, input }) => {
+        const { organisationId, id: userId } = ctx.user as { organisationId: string; id: string };
+        const { id, ...data } = input;
+        const record = await ctx.prisma.staffHealthDeclaration.findUniqueOrThrow({
+          where: { id },
+          select: { organisationId: true },
+        });
+        if (record.organisationId !== organisationId) {
+          throw new TRPCError({ code: "FORBIDDEN" });
+        }
+        return ctx.prisma.staffHealthDeclaration.update({
+          where: { id },
+          data: { ...data, updatedBy: userId },
+        });
+      }),
+  }),
 });

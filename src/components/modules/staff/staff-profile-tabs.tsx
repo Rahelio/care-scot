@@ -11,6 +11,7 @@ const TABS = [
   { label: "Supervision", suffix: "/supervision" },
   { label: "Appraisals", suffix: "/appraisals" },
   { label: "Absence", suffix: "/absence" },
+  { label: "Health", suffix: "/health" },
   { label: "Leaving", suffix: "/leaving" },
   { label: "Documents", suffix: "/documents" },
 ];
