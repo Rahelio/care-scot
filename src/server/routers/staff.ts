@@ -1,8 +1,15 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { router, protectedProcedure } from "../trpc";
-import { StaffStatus, StaffRoleType, EmploymentType, DisclosureLevel, RegistrationType, ReferenceType } from "@prisma/client";
+import { StaffStatus, StaffRoleType, EmploymentType, DisclosureLevel, RegistrationType, ReferenceType, TrainingType } from "@prisma/client";
 import { requirePermission } from "../middleware/rbac";
+import {
+  getMandatoryTraining,
+  MANDATORY_BY_ROLE,
+  TRAINING_LABELS,
+  computeTrainingStatus,
+  ALL_MANDATORY_TYPES,
+} from "../services/staff/training-config";
 
 const staffReadProcedure = protectedProcedure.use(requirePermission("staff.read"));
 const staffManageProcedure = protectedProcedure.use(requirePermission("staff.manage"));
@@ -546,6 +553,221 @@ export const staffRouter = router({
           where: { id },
           data: { ...data, updatedBy: userId },
         });
+      }),
+  }),
+
+  // ── Training Records ──────────────────────
+  training: router({
+    getByStaff: staffReadProcedure
+      .input(z.object({ staffMemberId: z.string().uuid() }))
+      .query(async ({ ctx, input }) => {
+        const { organisationId } = ctx.user as { organisationId: string };
+        const staff = await ctx.prisma.staffMember.findUniqueOrThrow({
+          where: { id: input.staffMemberId, organisationId },
+          select: { roleType: true },
+        });
+        const records = await ctx.prisma.staffTrainingRecord.findMany({
+          where: { staffMemberId: input.staffMemberId, organisationId },
+          orderBy: { completionDate: "desc" },
+        });
+        return { records, mandatory: getMandatoryTraining(staff.roleType) };
+      }),
+
+    create: staffManageProcedure
+      .input(
+        z.object({
+          staffMemberId: z.string().uuid(),
+          trainingType: z.nativeEnum(TrainingType),
+          trainingName: z.string().min(1),
+          trainingProvider: z.string().optional(),
+          completionDate: z.date(),
+          expiryDate: z.date().optional(),
+          isMandatory: z.boolean(),
+        })
+      )
+      .mutation(async ({ ctx, input }) => {
+        const { organisationId, id: userId } = ctx.user as { organisationId: string; id: string };
+        return ctx.prisma.staffTrainingRecord.create({
+          data: { ...input, organisationId, createdBy: userId, updatedBy: userId },
+        });
+      }),
+
+    update: staffManageProcedure
+      .input(
+        z.object({
+          id: z.string().uuid(),
+          trainingType: z.nativeEnum(TrainingType).optional(),
+          trainingName: z.string().min(1).optional(),
+          trainingProvider: z.string().optional(),
+          completionDate: z.date().optional(),
+          expiryDate: z.date().optional(),
+          isMandatory: z.boolean().optional(),
+        })
+      )
+      .mutation(async ({ ctx, input }) => {
+        const { organisationId, id: userId } = ctx.user as { organisationId: string; id: string };
+        const { id, ...data } = input;
+        const record = await ctx.prisma.staffTrainingRecord.findUniqueOrThrow({
+          where: { id },
+          select: { organisationId: true },
+        });
+        if (record.organisationId !== organisationId) {
+          throw new TRPCError({ code: "FORBIDDEN" });
+        }
+        return ctx.prisma.staffTrainingRecord.update({
+          where: { id },
+          data: { ...data, updatedBy: userId },
+        });
+      }),
+
+    getMatrix: staffReadProcedure
+      .input(
+        z.object({
+          roleType: z.nativeEnum(StaffRoleType).optional(),
+        })
+      )
+      .query(async ({ ctx, input }) => {
+        const { organisationId } = ctx.user as { organisationId: string };
+
+        const staff = await ctx.prisma.staffMember.findMany({
+          where: {
+            organisationId,
+            status: "ACTIVE",
+            ...(input.roleType && { roleType: input.roleType }),
+          },
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            roleType: true,
+            jobTitle: true,
+            trainingRecords: {
+              select: {
+                id: true,
+                trainingType: true,
+                completionDate: true,
+                expiryDate: true,
+                isMandatory: true,
+                trainingName: true,
+              },
+              orderBy: { completionDate: "desc" },
+            },
+          },
+          orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
+        });
+
+        // Columns = union of mandatory types for visible roles
+        const visibleRoles = input.roleType
+          ? [input.roleType]
+          : (Object.keys(MANDATORY_BY_ROLE) as StaffRoleType[]);
+        const columns: TrainingType[] = [
+          ...new Set(visibleRoles.flatMap((r) => MANDATORY_BY_ROLE[r])),
+        ];
+
+        return {
+          staff: staff.map((s) => ({
+            ...s,
+            mandatory: getMandatoryTraining(s.roleType),
+          })),
+          columns,
+        };
+      }),
+
+    getExpiring: staffReadProcedure
+      .input(
+        z.object({
+          withinDays: z.number().min(1).max(365).default(90),
+        })
+      )
+      .query(async ({ ctx, input }) => {
+        const { organisationId } = ctx.user as { organisationId: string };
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const cutoff = new Date(today);
+        cutoff.setDate(cutoff.getDate() + input.withinDays);
+
+        function daysUntil(date: Date) {
+          const d = new Date(date);
+          d.setHours(0, 0, 0, 0);
+          return Math.ceil((d.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+        }
+
+        const staffFilter = {
+          organisationId,
+          staffMember: { status: { not: "LEFT" as const } },
+        };
+
+        const [trainingRecords, pvgRecords, registrationRecords] = await Promise.all([
+          ctx.prisma.staffTrainingRecord.findMany({
+            where: { ...staffFilter, expiryDate: { lte: cutoff } },
+            include: {
+              staffMember: {
+                select: { id: true, firstName: true, lastName: true, roleType: true, status: true },
+              },
+            },
+            orderBy: { expiryDate: "asc" },
+          }),
+          ctx.prisma.staffPvgRecord.findMany({
+            where: { ...staffFilter, renewalDate: { lte: cutoff, not: null } },
+            include: {
+              staffMember: {
+                select: { id: true, firstName: true, lastName: true, roleType: true, status: true },
+              },
+            },
+            orderBy: { renewalDate: "asc" },
+          }),
+          ctx.prisma.staffRegistration.findMany({
+            where: { ...staffFilter, expiryDate: { lte: cutoff, not: null } },
+            include: {
+              staffMember: {
+                select: { id: true, firstName: true, lastName: true, roleType: true, status: true },
+              },
+            },
+            orderBy: { expiryDate: "asc" },
+          }),
+        ]);
+
+        const items = [
+          ...trainingRecords.map((t) => ({
+            type: "training" as const,
+            staffId: t.staffMember.id,
+            staffName: `${t.staffMember.firstName} ${t.staffMember.lastName}`,
+            roleType: t.staffMember.roleType,
+            staffStatus: t.staffMember.status,
+            label: TRAINING_LABELS[t.trainingType] ?? t.trainingName,
+            trainingType: t.trainingType as TrainingType | null,
+            expiryDate: t.expiryDate as Date,
+            daysUntilExpiry: daysUntil(t.expiryDate as Date),
+          })),
+          ...pvgRecords
+            .filter((p) => p.renewalDate != null)
+            .map((p) => ({
+              type: "pvg" as const,
+              staffId: p.staffMember.id,
+              staffName: `${p.staffMember.firstName} ${p.staffMember.lastName}`,
+              roleType: p.staffMember.roleType,
+              staffStatus: p.staffMember.status,
+              label: "PVG Renewal",
+              trainingType: null as TrainingType | null,
+              expiryDate: p.renewalDate as Date,
+              daysUntilExpiry: daysUntil(p.renewalDate as Date),
+            })),
+          ...registrationRecords
+            .filter((r) => r.expiryDate != null)
+            .map((r) => ({
+              type: "registration" as const,
+              staffId: r.staffMember.id,
+              staffName: `${r.staffMember.firstName} ${r.staffMember.lastName}`,
+              roleType: r.staffMember.roleType,
+              staffStatus: r.staffMember.status,
+              label: `${r.registrationType} Registration`,
+              trainingType: null as TrainingType | null,
+              expiryDate: r.expiryDate as Date,
+              daysUntilExpiry: daysUntil(r.expiryDate as Date),
+            })),
+        ].sort((a, b) => a.daysUntilExpiry - b.daysUntilExpiry);
+
+        return items;
       }),
   }),
 });

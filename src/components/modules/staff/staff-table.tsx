@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Search, Plus, Users } from "lucide-react";
+import { Search, Plus, LayoutGrid, AlertTriangle, Users } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { useDebounce } from "@/lib/use-debounce";
 import { Button } from "@/components/ui/button";
@@ -89,12 +89,26 @@ export function StaffTable() {
             </p>
           )}
         </div>
-        <Button asChild>
-          <Link href="/staff/new">
-            <Plus className="h-4 w-4 mr-2" />
-            Add Staff Member
-          </Link>
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" asChild>
+            <Link href="/staff/expiry">
+              <AlertTriangle className="h-4 w-4 mr-1.5" />
+              Expiry
+            </Link>
+          </Button>
+          <Button variant="outline" size="sm" asChild>
+            <Link href="/staff/training-matrix">
+              <LayoutGrid className="h-4 w-4 mr-1.5" />
+              Matrix
+            </Link>
+          </Button>
+          <Button asChild>
+            <Link href="/staff/new">
+              <Plus className="h-4 w-4 mr-2" />
+              Add Staff Member
+            </Link>
+          </Button>
+        </div>
       </div>
 
       <div className="flex gap-3 flex-wrap">
