@@ -1,11 +1,38 @@
 import { z } from "zod";
 import { router, protectedProcedure } from "../trpc";
-import { MedicationStatus } from "@prisma/client";
+import {
+  MedicationStatus,
+  MedicationErrorType,
+  NccMerpCategory,
+  AuditStatus,
+} from "@prisma/client";
 import { TRPCError } from "@trpc/server";
-import { requirePermission } from "../middleware/rbac";
+import { requirePermission, requireRole } from "../middleware/rbac";
 
 const medReadProcedure = protectedProcedure.use(requirePermission("medication.read"));
 const medAdminProcedure = protectedProcedure.use(requirePermission("medication.administer"));
+const medManageProcedure = protectedProcedure.use(requirePermission("incidents.manage"));
+const auditsManageProcedure = protectedProcedure.use(requirePermission("audits.manage"));
+
+// NCC MERP categories that require Care Inspectorate notification
+const HIGH_SEVERITY_CATEGORIES: NccMerpCategory[] = ["E", "F", "G", "H", "I"];
+
+// Shared Zod schemas for audit findings JSON
+const auditFindingSchema = z.object({
+  id: z.string(),
+  section: z.string(),
+  item: z.string(),
+  result: z.enum(["PASS", "FAIL", "NA"]),
+  notes: z.string().optional(),
+});
+
+const actionItemSchema = z.object({
+  id: z.string(),
+  description: z.string(),
+  assignedTo: z.string().optional(),
+  dueDate: z.string().optional(),
+  status: z.enum(["OPEN", "IN_PROGRESS", "COMPLETED"]),
+});
 
 export const medicationRouter = router({
   // ── Medications ───────────────────────────
@@ -140,7 +167,6 @@ export const medicationRouter = router({
     )
     .query(async ({ ctx, input }) => {
       const { organisationId } = ctx.user as { organisationId: string };
-      // First and last day of the month
       const startDate = new Date(input.year, input.month - 1, 1);
       const endDate = new Date(input.year, input.month, 0);
 
@@ -149,7 +175,6 @@ export const medicationRouter = router({
           where: {
             serviceUserId: input.serviceUserId,
             organisationId,
-            // Show active and on-hold; exclude discontinued
             status: { not: "DISCONTINUED" },
           },
           orderBy: [{ isPrn: "asc" }, { medicationName: "asc" }],
@@ -261,7 +286,7 @@ export const medicationRouter = router({
     });
   }),
 
-  // ── Legacy / Errors ───────────────────────
+  // ── Legacy ─────────────────────────────────
 
   getMarChart: medReadProcedure
     .input(
@@ -290,34 +315,332 @@ export const medicationRouter = router({
       });
     }),
 
-  reportError: protectedProcedure
-    .input(
-      z.object({
-        serviceUserId: z.string().uuid().optional(),
-        errorDate: z.date(),
-        errorType: z.string(),
-        nccMerpCategory: z.string().optional(),
-        description: z.string().optional(),
-        actionTaken: z.string().optional(),
-        lessonsLearned: z.string().optional(),
-      })
-    )
-    .mutation(async ({ ctx, input }) => {
-      const { organisationId, id: userId } = ctx.user as {
-        organisationId: string;
-        id: string;
-      };
-      return ctx.prisma.medicationError.create({
-        data: {
-          ...input,
-          errorType: input.errorType as never,
-          nccMerpCategory: input.nccMerpCategory as never,
+  // ── Errors ─────────────────────────────────
+
+  errors: router({
+    /**
+     * Report a medication error. Any authenticated staff member may report.
+     * If NCC MERP category E–I: auto-creates a Care Inspectorate notification
+     * draft and sends an escalation notification to all MANAGER+ users.
+     */
+    report: protectedProcedure
+      .input(
+        z.object({
+          serviceUserId: z.string().uuid().optional(),
+          errorDate: z.string(), // "YYYY-MM-DD"
+          errorType: z.nativeEnum(MedicationErrorType),
+          nccMerpCategory: z.nativeEnum(NccMerpCategory).optional(),
+          description: z.string().min(1, "Description is required"),
+          actionTaken: z.string().optional(),
+          lessonsLearned: z.string().optional(),
+        })
+      )
+      .mutation(async ({ ctx, input }) => {
+        const { organisationId, id: userId, staffMemberId } = ctx.user as {
+          organisationId: string;
+          id: string;
+          staffMemberId: string | null;
+        };
+
+        const { errorDate, ...rest } = input;
+
+        const error = await ctx.prisma.medicationError.create({
+          data: {
+            ...rest,
+            errorDate: new Date(errorDate),
+            organisationId,
+            reportedBy: staffMemberId ?? undefined,
+            reportedDate: new Date(),
+            createdBy: userId,
+            updatedBy: userId,
+          },
+        });
+
+        // Escalate if high-severity NCC MERP category (E–I)
+        if (
+          input.nccMerpCategory &&
+          HIGH_SEVERITY_CATEGORIES.includes(input.nccMerpCategory)
+        ) {
+          // Auto-create a draft Care Inspectorate notification
+          await ctx.prisma.careInspectorateNotification.create({
+            data: {
+              organisationId,
+              notificationType: "MEDICATION_ERROR_E_PLUS",
+              description: `Auto-generated from medication error report. Category ${input.nccMerpCategory}. ${input.description}`.slice(0, 500),
+              createdBy: userId,
+              updatedBy: userId,
+            },
+          });
+
+          // Notify all MANAGER+ users in the organisation
+          const managers = await ctx.prisma.user.findMany({
+            where: {
+              organisationId,
+              role: { in: ["MANAGER", "ORG_ADMIN", "SUPER_ADMIN"] },
+            },
+            select: { id: true },
+          });
+
+          if (managers.length > 0) {
+            await ctx.prisma.notification.createMany({
+              data: managers.map((mgr) => ({
+                organisationId,
+                userId: mgr.id,
+                title: `Medication Error — Category ${input.nccMerpCategory} Escalation`,
+                message: `A NCC MERP Category ${input.nccMerpCategory} medication error has been reported. A Care Inspectorate notification draft has been created and investigation is required.`,
+                entityType: "medication_error",
+                entityId: error.id,
+                link: `/medication/errors/${error.id}`,
+              })),
+            });
+          }
+        }
+
+        return error;
+      }),
+
+    /**
+     * Update investigation details. MANAGER+ only.
+     */
+    update: medManageProcedure
+      .input(
+        z.object({
+          id: z.string().uuid(),
+          investigationOutcome: z.string().optional(),
+          careInspectorateNotified: z.boolean().optional(),
+          notificationDate: z.string().optional(), // "YYYY-MM-DD"
+          lessonsLearned: z.string().optional(),
+          actionTaken: z.string().optional(),
+        })
+      )
+      .mutation(async ({ ctx, input }) => {
+        const { organisationId, id: userId } = ctx.user as {
+          organisationId: string;
+          id: string;
+        };
+        const { id, notificationDate, ...data } = input;
+        return ctx.prisma.medicationError.update({
+          where: { id, organisationId },
+          data: {
+            ...data,
+            investigatedBy: userId,
+            notificationDate: notificationDate ? new Date(notificationDate) : undefined,
+            updatedBy: userId,
+          },
+        });
+      }),
+
+    /**
+     * Paginated list of all medication errors. Requires medication.read.
+     */
+    list: medReadProcedure
+      .input(
+        z.object({
+          page: z.number().int().min(1).default(1),
+          limit: z.number().int().min(1).max(100).default(20),
+          serviceUserId: z.string().uuid().optional(),
+          nccMerpCategory: z.nativeEnum(NccMerpCategory).optional(),
+        })
+      )
+      .query(async ({ ctx, input }) => {
+        const { organisationId } = ctx.user as { organisationId: string };
+        const skip = (input.page - 1) * input.limit;
+
+        const where = {
           organisationId,
-          reportedBy: userId,
-          reportedDate: new Date(),
-          createdBy: userId,
-          updatedBy: userId,
-        },
-      });
-    }),
+          ...(input.serviceUserId && { serviceUserId: input.serviceUserId }),
+          ...(input.nccMerpCategory && { nccMerpCategory: input.nccMerpCategory }),
+        };
+
+        const [items, total] = await Promise.all([
+          ctx.prisma.medicationError.findMany({
+            where,
+            include: {
+              serviceUser: {
+                select: { id: true, firstName: true, lastName: true },
+              },
+              reportedByStaff: {
+                select: { id: true, firstName: true, lastName: true },
+              },
+              investigatedByUser: {
+                select: { id: true, email: true },
+              },
+            },
+            orderBy: { errorDate: "desc" },
+            skip,
+            take: input.limit,
+          }),
+          ctx.prisma.medicationError.count({ where }),
+        ]);
+
+        return { items, total, page: input.page, limit: input.limit };
+      }),
+
+    /**
+     * All errors for a specific service user.
+     */
+    getByServiceUser: medReadProcedure
+      .input(z.object({ serviceUserId: z.string().uuid() }))
+      .query(async ({ ctx, input }) => {
+        const { organisationId } = ctx.user as { organisationId: string };
+        return ctx.prisma.medicationError.findMany({
+          where: { serviceUserId: input.serviceUserId, organisationId },
+          include: {
+            reportedByStaff: {
+              select: { id: true, firstName: true, lastName: true },
+            },
+            investigatedByUser: {
+              select: { id: true, email: true },
+            },
+          },
+          orderBy: { errorDate: "desc" },
+        });
+      }),
+
+    /**
+     * Get a single error by id.
+     */
+    getById: medReadProcedure
+      .input(z.object({ id: z.string().uuid() }))
+      .query(async ({ ctx, input }) => {
+        const { organisationId } = ctx.user as { organisationId: string };
+        const error = await ctx.prisma.medicationError.findUnique({
+          where: { id: input.id, organisationId },
+          include: {
+            serviceUser: {
+              select: { id: true, firstName: true, lastName: true },
+            },
+            reportedByStaff: {
+              select: { id: true, firstName: true, lastName: true },
+            },
+            investigatedByUser: {
+              select: { id: true, email: true },
+            },
+          },
+        });
+        if (!error) throw new TRPCError({ code: "NOT_FOUND" });
+        return error;
+      }),
+  }),
+
+  // ── Audits ─────────────────────────────────
+
+  audits: router({
+    /**
+     * Create a new medication audit with checklist findings.
+     */
+    create: auditsManageProcedure
+      .input(
+        z.object({
+          auditDate: z.string(), // "YYYY-MM-DD"
+          auditorId: z.string().uuid().optional(),
+          auditFindings: z.array(auditFindingSchema).optional(),
+          issuesIdentified: z.string().optional(),
+          actionsRequired: z.array(actionItemSchema).optional(),
+          status: z.nativeEnum(AuditStatus).optional(),
+        })
+      )
+      .mutation(async ({ ctx, input }) => {
+        const { organisationId, id: userId } = ctx.user as {
+          organisationId: string;
+          id: string;
+        };
+        const { auditDate, auditFindings, actionsRequired, ...rest } = input;
+        return ctx.prisma.medicationAudit.create({
+          data: {
+            ...rest,
+            auditDate: new Date(auditDate),
+            auditFindings: auditFindings ?? undefined,
+            actionsRequired: actionsRequired ?? undefined,
+            organisationId,
+            status: rest.status ?? "OPEN",
+            createdBy: userId,
+            updatedBy: userId,
+          },
+        });
+      }),
+
+    /**
+     * Update an existing audit — findings, action plan, status.
+     */
+    update: auditsManageProcedure
+      .input(
+        z.object({
+          id: z.string().uuid(),
+          auditFindings: z.array(auditFindingSchema).optional(),
+          issuesIdentified: z.string().optional(),
+          actionsRequired: z.array(actionItemSchema).optional(),
+          status: z.nativeEnum(AuditStatus).optional(),
+        })
+      )
+      .mutation(async ({ ctx, input }) => {
+        const { organisationId, id: userId } = ctx.user as {
+          organisationId: string;
+          id: string;
+        };
+        const { id, auditFindings, actionsRequired, ...data } = input;
+        return ctx.prisma.medicationAudit.update({
+          where: { id, organisationId },
+          data: {
+            ...data,
+            auditFindings: auditFindings ?? undefined,
+            actionsRequired: actionsRequired ?? undefined,
+            updatedBy: userId,
+          },
+        });
+      }),
+
+    /**
+     * Paginated list of audits. Requires audits.manage.
+     */
+    list: auditsManageProcedure
+      .input(
+        z.object({
+          page: z.number().int().min(1).default(1),
+          limit: z.number().int().min(1).max(100).default(20),
+          status: z.nativeEnum(AuditStatus).optional(),
+        })
+      )
+      .query(async ({ ctx, input }) => {
+        const { organisationId } = ctx.user as { organisationId: string };
+        const skip = (input.page - 1) * input.limit;
+
+        const where = {
+          organisationId,
+          ...(input.status && { status: input.status }),
+        };
+
+        const [items, total] = await Promise.all([
+          ctx.prisma.medicationAudit.findMany({
+            where,
+            include: {
+              auditor: { select: { id: true, email: true } },
+            },
+            orderBy: { auditDate: "desc" },
+            skip,
+            take: input.limit,
+          }),
+          ctx.prisma.medicationAudit.count({ where }),
+        ]);
+
+        return { items, total, page: input.page, limit: input.limit };
+      }),
+
+    /**
+     * Get a single audit by id.
+     */
+    getById: auditsManageProcedure
+      .input(z.object({ id: z.string().uuid() }))
+      .query(async ({ ctx, input }) => {
+        const { organisationId } = ctx.user as { organisationId: string };
+        const audit = await ctx.prisma.medicationAudit.findUnique({
+          where: { id: input.id, organisationId },
+          include: {
+            auditor: { select: { id: true, email: true } },
+          },
+        });
+        if (!audit) throw new TRPCError({ code: "NOT_FOUND" });
+        return audit;
+      }),
+  }),
 });

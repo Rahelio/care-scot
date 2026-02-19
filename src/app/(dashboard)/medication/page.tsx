@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Search, Pill, CalendarDays, ChevronRight } from "lucide-react";
+import { Search, Pill, CalendarDays, ChevronRight, TriangleAlert, ClipboardCheck } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -30,6 +30,22 @@ export default function MedicationPage() {
         <p className="text-muted-foreground mt-1">
           View medication profiles and MAR charts for service users.
         </p>
+      </div>
+
+      {/* Quick links */}
+      <div className="flex gap-3">
+        <Button variant="outline" asChild>
+          <Link href="/medication/errors">
+            <TriangleAlert className="h-4 w-4 mr-1.5 text-destructive" />
+            Error Log
+          </Link>
+        </Button>
+        <Button variant="outline" asChild>
+          <Link href="/medication/audits">
+            <ClipboardCheck className="h-4 w-4 mr-1.5" />
+            Audits
+          </Link>
+        </Button>
       </div>
 
       {/* Search */}
