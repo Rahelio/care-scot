@@ -956,6 +956,588 @@ export const complianceRouter = router({
       }),
   }),
 
+  // ══════════════════════════════════════════════════════════════════════════
+  // DASHBOARD — Inspection Readiness
+  // ══════════════════════════════════════════════════════════════════════════
+
+  dashboard: router({
+    getOverview: manageProcedure.query(async ({ ctx }) => {
+      const { organisationId } = ctx.user as { organisationId: string };
+      const now = new Date();
+      const days28Ago = new Date(now.getTime() - 28 * 86_400_000);
+      const days90Future = new Date(now.getTime() + 90 * 86_400_000);
+      const months3Ago = new Date(now);
+      months3Ago.setMonth(months3Ago.getMonth() - 3);
+      const months12Ago = new Date(now);
+      months12Ago.setMonth(months12Ago.getMonth() - 12);
+
+      // ── Personal Plans ──
+      const activeServiceUsers = await ctx.prisma.serviceUser.findMany({
+        where: { organisationId, status: "ACTIVE" },
+        select: { id: true },
+      });
+      const suIds = activeServiceUsers.map((su) => su.id);
+      const totalSU = suIds.length;
+
+      // Find service users that have at least one ACTIVE personal plan
+      const withPlanSUs = totalSU > 0
+        ? await ctx.prisma.personalPlan.findMany({
+            where: {
+              organisationId,
+              serviceUserId: { in: suIds },
+              status: "ACTIVE",
+            },
+            select: { serviceUserId: true },
+            distinct: ["serviceUserId"],
+          })
+        : [];
+      const withPlanCount = withPlanSUs.length;
+      const withoutPlanCount = totalSU - withPlanCount;
+
+      // Overdue plans: ACTIVE plans where nextReviewDate < 28 days ago
+      const overduePlans = totalSU > 0
+        ? await ctx.prisma.personalPlan.count({
+            where: {
+              organisationId,
+              status: "ACTIVE",
+              nextReviewDate: { lt: days28Ago },
+            },
+          })
+        : 0;
+
+      // Due for review: ACTIVE plans where nextReviewDate <= now
+      const dueForReview = totalSU > 0
+        ? await ctx.prisma.personalPlan.count({
+            where: {
+              organisationId,
+              status: "ACTIVE",
+              nextReviewDate: { lte: now, gte: days28Ago },
+            },
+          })
+        : 0;
+
+      // ── Staff Compliance ──
+      const activeStaff = await ctx.prisma.staffMember.findMany({
+        where: { organisationId, status: "ACTIVE" },
+        select: { id: true },
+      });
+      const staffIds = activeStaff.map((s) => s.id);
+      const totalStaff = staffIds.length;
+
+      // PVG expiring in 90 days
+      const pvgExpiring = totalStaff > 0
+        ? await ctx.prisma.staffPvgRecord.count({
+            where: {
+              organisationId,
+              staffMemberId: { in: staffIds },
+              renewalDate: { lte: days90Future, gte: now },
+            },
+          })
+        : 0;
+
+      // SSSC expiring in 90 days
+      const ssscExpiring = totalStaff > 0
+        ? await ctx.prisma.staffRegistration.count({
+            where: {
+              organisationId,
+              staffMemberId: { in: staffIds },
+              registrationType: "SSSC",
+              expiryDate: { lte: days90Future, gte: now },
+            },
+          })
+        : 0;
+
+      // Staff missing mandatory training (active staff with no mandatory training records)
+      const staffWithMandatory = totalStaff > 0
+        ? await ctx.prisma.staffTrainingRecord.findMany({
+            where: {
+              organisationId,
+              staffMemberId: { in: staffIds },
+              isMandatory: true,
+            },
+            select: { staffMemberId: true },
+            distinct: ["staffMemberId"],
+          })
+        : [];
+      const missingMandatory = totalStaff - staffWithMandatory.length;
+
+      // Expiring training (mandatory, expiring in 90 days)
+      const expiringTraining = totalStaff > 0
+        ? await ctx.prisma.staffTrainingRecord.count({
+            where: {
+              organisationId,
+              staffMemberId: { in: staffIds },
+              isMandatory: true,
+              expiryDate: { lte: days90Future, gte: now },
+            },
+          })
+        : 0;
+
+      // Overdue supervisions (>3 months since last)
+      const recentSupervisions = totalStaff > 0
+        ? await ctx.prisma.staffSupervision.findMany({
+            where: {
+              organisationId,
+              staffMemberId: { in: staffIds },
+              supervisionDate: { gte: months3Ago },
+            },
+            select: { staffMemberId: true },
+            distinct: ["staffMemberId"],
+          })
+        : [];
+      const overdueSupervisions = totalStaff - recentSupervisions.length;
+
+      // Overdue appraisals (>12 months since last)
+      const recentAppraisals = totalStaff > 0
+        ? await ctx.prisma.staffAppraisal.findMany({
+            where: {
+              organisationId,
+              staffMemberId: { in: staffIds },
+              appraisalDate: { gte: months12Ago },
+            },
+            select: { staffMemberId: true },
+            distinct: ["staffMemberId"],
+          })
+        : [];
+      const overdueAppraisals = totalStaff - recentAppraisals.length;
+
+      // ── Incidents ──
+      const [
+        openIncidents,
+        highCriticalOpen,
+        pendingCINotifications,
+        openSafeguarding,
+      ] = await Promise.all([
+        ctx.prisma.incident.count({
+          where: { organisationId, status: { not: "CLOSED" } },
+        }),
+        ctx.prisma.incident.count({
+          where: {
+            organisationId,
+            status: { not: "CLOSED" },
+            severity: { in: ["HIGH", "CRITICAL"] },
+          },
+        }),
+        ctx.prisma.careInspectorateNotification.count({
+          where: { organisationId, submittedDate: null },
+        }),
+        ctx.prisma.safeguardingConcern.count({
+          where: { organisationId, status: { not: "CLOSED" } },
+        }),
+      ]);
+
+      // ── Complaints ──
+      const openComplaints = await ctx.prisma.complaint.findMany({
+        where: { organisationId, status: { not: "RESOLVED" } },
+        select: { dateReceived: true },
+      });
+      const overdueComplaints = openComplaints.filter((c) => {
+        const deadline = addWorkingDays(new Date(c.dateReceived), 20);
+        return now > deadline;
+      }).length;
+
+      // ── Policies ──
+      const overdueReviews = await ctx.prisma.policy.count({
+        where: {
+          organisationId,
+          status: "ACTIVE",
+          nextReviewDate: { lt: now },
+        },
+      });
+
+      const activePolicies = await ctx.prisma.policy.findMany({
+        where: { organisationId, status: "ACTIVE" },
+        select: { id: true },
+      });
+      const policyIds = activePolicies.map((p) => p.id);
+
+      // Total expected acknowledgments vs actual
+      const totalExpectedAcks = policyIds.length * totalStaff;
+      const actualAcks = policyIds.length > 0
+        ? await ctx.prisma.policyAcknowledgment.count({
+            where: {
+              policyId: { in: policyIds },
+              acknowledged: true,
+            },
+          })
+        : 0;
+      const pendingAcknowledgments = totalExpectedAcks - actualAcks;
+
+      // ── Audits ──
+      const openAudits = await ctx.prisma.qualityAudit.findMany({
+        where: { organisationId, status: { not: "CLOSED" } },
+        select: { auditType: true, actionPlan: true },
+      });
+      type AuditActionItem = { status: string };
+      let openActionItems = 0;
+      for (const a of openAudits) {
+        const plan = (a.actionPlan as unknown as AuditActionItem[] | null) ?? [];
+        openActionItems += plan.filter((p) => p.status !== "COMPLETED").length;
+      }
+
+      // ── Equipment ──
+      const overdueEquipment = await ctx.prisma.equipmentCheck.count({
+        where: {
+          organisationId,
+          nextCheckDate: { lt: now },
+        },
+      });
+
+      // ── Reviews ──
+      // Service users without a review in the last 12 months
+      const recentReviews = totalSU > 0
+        ? await ctx.prisma.serviceUserReview.findMany({
+            where: {
+              organisationId,
+              serviceUserId: { in: suIds },
+              reviewDate: { gte: months12Ago },
+            },
+            select: { serviceUserId: true },
+            distinct: ["serviceUserId"],
+          })
+        : [];
+      const overdueReviews2 = totalSU - recentReviews.length;
+
+      return {
+        personalPlans: {
+          total: totalSU,
+          withPlan: withPlanCount,
+          withoutPlan: withoutPlanCount,
+          overdue: overduePlans,
+          dueForReview,
+        },
+        staffCompliance: {
+          totalStaff,
+          pvgExpiring,
+          ssscExpiring,
+          missingMandatory,
+          expiringTraining,
+          overdueSupervisions,
+          overdueAppraisals,
+        },
+        incidents: {
+          openCount: openIncidents,
+          highCriticalOpen,
+          pendingCINotifications,
+          openSafeguarding,
+        },
+        complaints: {
+          openCount: openComplaints.length,
+          overdueResponses: overdueComplaints,
+        },
+        policies: {
+          overdueReviews,
+          pendingAcknowledgments,
+          totalActivePolicies: policyIds.length,
+        },
+        audits: {
+          openCount: openAudits.length,
+          openActionItems,
+        },
+        equipment: {
+          overdueChecks: overdueEquipment,
+        },
+        reviews: {
+          overdueAnnualReviews: overdueReviews2,
+          totalServiceUsers: totalSU,
+        },
+      };
+    }),
+
+    getInspectionReadinessScore: manageProcedure.query(async ({ ctx }) => {
+      const { organisationId } = ctx.user as { organisationId: string };
+      const now = new Date();
+      const days90Future = new Date(now.getTime() + 90 * 86_400_000);
+      const months3Ago = new Date(now);
+      months3Ago.setMonth(months3Ago.getMonth() - 3);
+      const months12Ago = new Date(now);
+      months12Ago.setMonth(months12Ago.getMonth() - 12);
+
+      // Helper: clamp between 0-100
+      const clamp = (v: number) => Math.max(0, Math.min(100, v));
+
+      // ── Personal Plans (20%) ──
+      const activeServiceUsers = await ctx.prisma.serviceUser.findMany({
+        where: { organisationId, status: "ACTIVE" },
+        select: { id: true },
+      });
+      const suIds = activeServiceUsers.map((su) => su.id);
+      const totalSU = suIds.length;
+
+      const withPlanSUs = totalSU > 0
+        ? await ctx.prisma.personalPlan.findMany({
+            where: {
+              organisationId,
+              serviceUserId: { in: suIds },
+              status: "ACTIVE",
+            },
+            select: { serviceUserId: true, nextReviewDate: true },
+            distinct: ["serviceUserId"],
+          })
+        : [];
+      const plansUpToDate = withPlanSUs.filter(
+        (p) => !p.nextReviewDate || new Date(p.nextReviewDate) >= now
+      ).length;
+      const personalPlansScore =
+        totalSU > 0 ? clamp((plansUpToDate / totalSU) * 100) : 100;
+
+      // ── Staff Compliance (25%) ──
+      const activeStaff = await ctx.prisma.staffMember.findMany({
+        where: { organisationId, status: "ACTIVE" },
+        select: { id: true },
+      });
+      const staffIds = activeStaff.map((s) => s.id);
+      const totalStaff = staffIds.length;
+
+      if (totalStaff === 0) {
+        // No staff — perfect score
+        const staffScore = 100;
+        // Skip detailed calculations, return simplified
+        const [openIncidents, totalIncidents] = await Promise.all([
+          ctx.prisma.incident.count({
+            where: { organisationId, status: { not: "CLOSED" } },
+          }),
+          ctx.prisma.incident.count({ where: { organisationId } }),
+        ]);
+        const incidentsScore =
+          totalIncidents > 0
+            ? clamp(
+                ((totalIncidents - openIncidents) / totalIncidents) * 100
+              )
+            : 100;
+
+        const overallScore = Math.round(
+          personalPlansScore * 0.2 +
+            staffScore * 0.25 +
+            incidentsScore * 0.15 +
+            100 * 0.1 + // complaints
+            100 * 0.1 + // policies
+            100 * 0.1 + // audits
+            100 * 0.05 + // equipment
+            100 * 0.05 // reviews
+        );
+
+        return {
+          overall: overallScore,
+          categories: {
+            personalPlans: Math.round(personalPlansScore),
+            staffCompliance: staffScore,
+            incidents: Math.round(incidentsScore),
+            complaints: 100,
+            policies: 100,
+            audits: 100,
+            equipment: 100,
+            reviews: 100,
+          },
+        };
+      }
+
+      // PVG: % of staff with valid (non-expiring-soon) PVG
+      const validPvg = await ctx.prisma.staffPvgRecord.findMany({
+        where: {
+          organisationId,
+          staffMemberId: { in: staffIds },
+          OR: [
+            { renewalDate: null },
+            { renewalDate: { gte: days90Future } },
+          ],
+        },
+        select: { staffMemberId: true },
+        distinct: ["staffMemberId"],
+      });
+
+      // SSSC: % of staff with valid registration
+      const validSssc = await ctx.prisma.staffRegistration.findMany({
+        where: {
+          organisationId,
+          staffMemberId: { in: staffIds },
+          registrationType: "SSSC",
+          OR: [
+            { expiryDate: null },
+            { expiryDate: { gte: now } },
+          ],
+        },
+        select: { staffMemberId: true },
+        distinct: ["staffMemberId"],
+      });
+
+      // Mandatory training: % with at least one current mandatory training
+      const validMandatory = await ctx.prisma.staffTrainingRecord.findMany({
+        where: {
+          organisationId,
+          staffMemberId: { in: staffIds },
+          isMandatory: true,
+          OR: [
+            { expiryDate: null },
+            { expiryDate: { gte: now } },
+          ],
+        },
+        select: { staffMemberId: true },
+        distinct: ["staffMemberId"],
+      });
+
+      // Supervisions: % with supervision in last 3 months
+      const recentSups = await ctx.prisma.staffSupervision.findMany({
+        where: {
+          organisationId,
+          staffMemberId: { in: staffIds },
+          supervisionDate: { gte: months3Ago },
+        },
+        select: { staffMemberId: true },
+        distinct: ["staffMemberId"],
+      });
+
+      // Appraisals: % with appraisal in last 12 months
+      const recentApps = await ctx.prisma.staffAppraisal.findMany({
+        where: {
+          organisationId,
+          staffMemberId: { in: staffIds },
+          appraisalDate: { gte: months12Ago },
+        },
+        select: { staffMemberId: true },
+        distinct: ["staffMemberId"],
+      });
+
+      // Staff compliance composite: avg of 5 sub-scores
+      const pvgPct = (validPvg.length / totalStaff) * 100;
+      const ssscPct = (validSssc.length / totalStaff) * 100;
+      const mandatoryPct = (validMandatory.length / totalStaff) * 100;
+      const supPct = (recentSups.length / totalStaff) * 100;
+      const appPct = (recentApps.length / totalStaff) * 100;
+      const staffScore = clamp(
+        (pvgPct + ssscPct + mandatoryPct + supPct + appPct) / 5
+      );
+
+      // ── Incidents (15%) ──
+      const [openIncidents, totalIncidents] = await Promise.all([
+        ctx.prisma.incident.count({
+          where: { organisationId, status: { not: "CLOSED" } },
+        }),
+        ctx.prisma.incident.count({ where: { organisationId } }),
+      ]);
+      const incidentsScore =
+        totalIncidents > 0
+          ? clamp(
+              ((totalIncidents - openIncidents) / totalIncidents) * 100
+            )
+          : 100;
+
+      // ── Complaints SLA (10%) ──
+      const openComplaints = await ctx.prisma.complaint.findMany({
+        where: { organisationId, status: { not: "RESOLVED" } },
+        select: { dateReceived: true },
+      });
+      const totalComplaints = await ctx.prisma.complaint.count({
+        where: { organisationId },
+      });
+      const overdueComplaints = openComplaints.filter((c) => {
+        const deadline = addWorkingDays(new Date(c.dateReceived), 20);
+        return now > deadline;
+      }).length;
+      const complaintsScore =
+        totalComplaints > 0
+          ? clamp(
+              ((totalComplaints - overdueComplaints) / totalComplaints) * 100
+            )
+          : 100;
+
+      // ── Policies (10%) ──
+      const [activePolicies, overdueReviewCount] = await Promise.all([
+        ctx.prisma.policy.count({
+          where: { organisationId, status: "ACTIVE" },
+        }),
+        ctx.prisma.policy.count({
+          where: {
+            organisationId,
+            status: "ACTIVE",
+            nextReviewDate: { lt: now },
+          },
+        }),
+      ]);
+      const policiesScore =
+        activePolicies > 0
+          ? clamp(
+              ((activePolicies - overdueReviewCount) / activePolicies) * 100
+            )
+          : 100;
+
+      // ── Audits (10%) ──
+      const allAudits = await ctx.prisma.qualityAudit.findMany({
+        where: { organisationId },
+        select: { status: true, actionPlan: true },
+      });
+      type AuditActionItem2 = { status: string };
+      let totalActions = 0;
+      let completedActions = 0;
+      for (const a of allAudits) {
+        const plan = (a.actionPlan as unknown as AuditActionItem2[] | null) ?? [];
+        totalActions += plan.length;
+        completedActions += plan.filter((p) => p.status === "COMPLETED").length;
+      }
+      const closedAudits = allAudits.filter((a) => a.status === "CLOSED").length;
+      const auditClosureRate =
+        allAudits.length > 0 ? (closedAudits / allAudits.length) * 100 : 100;
+      const actionCompletionRate =
+        totalActions > 0 ? (completedActions / totalActions) * 100 : 100;
+      const auditsScore = clamp((auditClosureRate + actionCompletionRate) / 2);
+
+      // ── Equipment (5%) ──
+      const [totalEquipment, overdueEquipment] = await Promise.all([
+        ctx.prisma.equipmentCheck.count({ where: { organisationId } }),
+        ctx.prisma.equipmentCheck.count({
+          where: { organisationId, nextCheckDate: { lt: now } },
+        }),
+      ]);
+      const equipmentScore =
+        totalEquipment > 0
+          ? clamp(
+              ((totalEquipment - overdueEquipment) / totalEquipment) * 100
+            )
+          : 100;
+
+      // ── Reviews (5%) ──
+      const recentReviews = totalSU > 0
+        ? await ctx.prisma.serviceUserReview.findMany({
+            where: {
+              organisationId,
+              serviceUserId: { in: suIds },
+              reviewDate: { gte: months12Ago },
+            },
+            select: { serviceUserId: true },
+            distinct: ["serviceUserId"],
+          })
+        : [];
+      const reviewsScore =
+        totalSU > 0 ? clamp((recentReviews.length / totalSU) * 100) : 100;
+
+      // ── Weighted overall ──
+      const overall = Math.round(
+        personalPlansScore * 0.2 +
+          staffScore * 0.25 +
+          incidentsScore * 0.15 +
+          complaintsScore * 0.1 +
+          policiesScore * 0.1 +
+          auditsScore * 0.1 +
+          equipmentScore * 0.05 +
+          reviewsScore * 0.05
+      );
+
+      return {
+        overall,
+        categories: {
+          personalPlans: Math.round(personalPlansScore),
+          staffCompliance: Math.round(staffScore),
+          incidents: Math.round(incidentsScore),
+          complaints: Math.round(complaintsScore),
+          policies: Math.round(policiesScore),
+          audits: Math.round(auditsScore),
+          equipment: Math.round(equipmentScore),
+          reviews: Math.round(reviewsScore),
+        },
+      };
+    }),
+  }),
+
   // ── Legacy flat procedures (backwards compat) ──────────────────────────
 
   /** @deprecated use compliance.policies.list */

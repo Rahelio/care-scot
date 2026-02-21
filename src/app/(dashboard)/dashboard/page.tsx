@@ -17,6 +17,7 @@ import {
   CardDescription,
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { ReadinessWidgetWrapper } from "./readiness-widget-wrapper";
 
 export const metadata: Metadata = { title: "Dashboard — CareScot" };
 
@@ -81,6 +82,8 @@ export default async function DashboardPage() {
           {org?.name ?? "Your organisation"} — CareScot Management System
         </p>
       </div>
+
+      <ReadinessWidgetWrapper role={session.user.role} />
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {MODULE_CARDS.map((card) => {

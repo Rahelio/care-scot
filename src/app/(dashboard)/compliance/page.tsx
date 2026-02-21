@@ -3,6 +3,7 @@
 import { Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import {
+  LayoutDashboard,
   FileText,
   MessageSquareWarning,
   Heart,
@@ -11,6 +12,7 @@ import {
   Search,
   FileBarChart,
 } from "lucide-react";
+import { ComplianceDashboard } from "@/components/modules/compliance/compliance-dashboard";
 import { PolicyList } from "@/components/modules/compliance/policy-list";
 import { ComplaintList } from "@/components/modules/compliance/complaint-list";
 import { ComplimentList } from "@/components/modules/compliance/compliment-list";
@@ -20,6 +22,7 @@ import { InspectionList } from "@/components/modules/compliance/inspection-list"
 import { AnnualReturnList } from "@/components/modules/compliance/annual-return-list";
 
 type Tab =
+  | "dashboard"
   | "policies"
   | "complaints"
   | "compliments"
@@ -29,6 +32,11 @@ type Tab =
   | "annual-returns";
 
 const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
+  {
+    id: "dashboard",
+    label: "Dashboard",
+    icon: <LayoutDashboard className="h-4 w-4" />,
+  },
   { id: "policies", label: "Policies", icon: <FileText className="h-4 w-4" /> },
   {
     id: "complaints",
@@ -57,7 +65,7 @@ const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
 function ComplianceHub() {
   const searchParams = useSearchParams();
   const router = useRouter();
-  const activeTab = (searchParams.get("tab") ?? "policies") as Tab;
+  const activeTab = (searchParams.get("tab") ?? "dashboard") as Tab;
 
   function setTab(tab: Tab) {
     router.push(`/compliance?tab=${tab}`);
@@ -68,8 +76,8 @@ function ComplianceHub() {
       <div>
         <h1 className="text-2xl font-semibold">Compliance & Quality</h1>
         <p className="text-muted-foreground mt-1">
-          Policies, complaints, quality audits, satisfaction surveys, Care
-          Inspectorate inspections, and annual returns.
+          Inspection readiness dashboard, policies, complaints, quality audits,
+          surveys, inspections, and annual returns.
         </p>
       </div>
 
@@ -91,6 +99,7 @@ function ComplianceHub() {
         ))}
       </div>
 
+      {activeTab === "dashboard" && <ComplianceDashboard />}
       {activeTab === "policies" && <PolicyList />}
       {activeTab === "complaints" && <ComplaintList />}
       {activeTab === "compliments" && <ComplimentList />}
