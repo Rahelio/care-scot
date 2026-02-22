@@ -11,7 +11,7 @@ import {
 } from "@prisma/client";
 import { TRPCError } from "@trpc/server";
 import { requirePermission } from "../middleware/rbac";
-import type { PrismaClient } from "@prisma/client";
+import { notifyManagers } from "../services/shared/notification-generator";
 
 const incManageProcedure = protectedProcedure.use(
   requirePermission("incidents.manage")
@@ -46,41 +46,6 @@ function shouldEscalate(type: IncidentType, severity: IncidentSeverity): boolean
   )
     return true;
   return false;
-}
-
-// ─── Helper: notify all MANAGER+ users ───────────────────────────────────────
-
-async function notifyManagers(
-  prisma: PrismaClient,
-  opts: {
-    organisationId: string;
-    title: string;
-    message: string;
-    entityType: string;
-    entityId: string;
-    link: string;
-  }
-) {
-  const managers = await prisma.user.findMany({
-    where: {
-      organisationId: opts.organisationId,
-      role: { in: ["MANAGER", "ORG_ADMIN", "SUPER_ADMIN"] },
-    },
-    select: { id: true },
-  });
-  if (managers.length > 0) {
-    await prisma.notification.createMany({
-      data: managers.map((mgr) => ({
-        organisationId: opts.organisationId,
-        userId: mgr.id,
-        title: opts.title,
-        message: opts.message,
-        entityType: opts.entityType,
-        entityId: opts.entityId,
-        link: opts.link,
-      })),
-    });
-  }
 }
 
 // ─── Router ──────────────────────────────────────────────────────────────────

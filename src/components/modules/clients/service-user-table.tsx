@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
-import { Search, Plus, UserRound } from "lucide-react";
+import { Search, Plus, UserRound, Download } from "lucide-react";
 import { trpc } from "@/lib/trpc";
+import { downloadCsv } from "@/lib/download-csv";
 import { useDebounce } from "@/lib/use-debounce";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -60,12 +61,15 @@ export function ServiceUserTable() {
             </p>
           )}
         </div>
-        <Button asChild>
-          <Link href="/clients/new">
-            <Plus className="h-4 w-4 mr-2" />
-            New Service User
-          </Link>
-        </Button>
+        <div className="flex items-center gap-2">
+          <ExportServiceUsersButton />
+          <Button asChild>
+            <Link href="/clients/new">
+              <Plus className="h-4 w-4 mr-2" />
+              New Service User
+            </Link>
+          </Button>
+        </div>
       </div>
 
       <div className="flex gap-3">
@@ -115,11 +119,13 @@ export function ServiceUserTable() {
           </TableHeader>
           <TableBody>
             {isPending ? (
-              <TableRow>
-                <TableCell colSpan={6} className="h-32 text-center text-muted-foreground">
-                  Loading…
-                </TableCell>
-              </TableRow>
+              <>{Array.from({ length: 5 }).map((_, i) => (
+                <TableRow key={i}>
+                  {Array.from({ length: 6 }).map((_, j) => (
+                    <TableCell key={j}><div className="h-4 w-full animate-pulse rounded bg-muted" /></TableCell>
+                  ))}
+                </TableRow>
+              ))}</>
             ) : !data?.items.length ? (
               <TableRow>
                 <TableCell colSpan={6} className="h-32">
@@ -192,5 +198,29 @@ export function ServiceUserTable() {
         </div>
       )}
     </div>
+  );
+}
+
+function ExportServiceUsersButton() {
+  const [exporting, setExporting] = useState(false);
+  const { data } = trpc.reports.exportServiceUsers.useQuery(
+    {},
+    { enabled: exporting, staleTime: 0 },
+  );
+
+  useEffect(() => {
+    if (data && exporting) {
+      downloadCsv(data.csv, data.filename);
+      setTimeout (() => {
+        setExporting(false);
+      }, 0);
+    }
+  }, [data, exporting]);
+
+  return (
+    <Button variant="outline" size="sm" onClick={() => setExporting(true)} disabled={exporting}>
+      <Download className="h-4 w-4 mr-1.5" />
+      {exporting ? "Exporting…" : "Export CSV"}
+    </Button>
   );
 }

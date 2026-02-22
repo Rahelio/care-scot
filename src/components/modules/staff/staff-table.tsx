@@ -176,11 +176,13 @@ export function StaffTable() {
           </TableHeader>
           <TableBody>
             {isPending ? (
-              <TableRow>
-                <TableCell colSpan={6} className="h-32 text-center text-muted-foreground">
-                  Loading…
-                </TableCell>
-              </TableRow>
+              <>{Array.from({ length: 5 }).map((_, i) => (
+                <TableRow key={i}>
+                  {Array.from({ length: 6 }).map((_, j) => (
+                    <TableCell key={j}><div className="h-4 w-full animate-pulse rounded bg-muted" /></TableCell>
+                  ))}
+                </TableRow>
+              ))}</>
             ) : !data?.items.length ? (
               <TableRow>
                 <TableCell colSpan={6} className="h-32">

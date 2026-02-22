@@ -8,6 +8,8 @@ import { rotaRouter } from "./routers/rota";
 import { auditRouter } from "./routers/audit";
 import { filesRouter } from "./routers/files";
 import { notificationsRouter } from "./routers/notifications";
+import { settingsRouter } from "./routers/settings";
+import { reportsRouter } from "./routers/reports";
 
 export const appRouter = router({
   clients: clientsRouter,
@@ -19,6 +21,8 @@ export const appRouter = router({
   audit: auditRouter,
   files: filesRouter,
   notifications: notificationsRouter,
+  settings: settingsRouter,
+  reports: reportsRouter,
 });
 
 export type AppRouter = typeof appRouter;

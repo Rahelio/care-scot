@@ -61,6 +61,33 @@ export const rotaRouter = router({
       });
     }),
 
+  /** All shifts for a date range (for calendar view) */
+  getShifts: protectedProcedure
+    .input(
+      z.object({
+        from: z.date(),
+        to: z.date(),
+      })
+    )
+    .query(async ({ ctx, input }) => {
+      const { organisationId } = ctx.user as { organisationId: string };
+      return ctx.prisma.rotaShift.findMany({
+        where: {
+          organisationId,
+          shiftDate: { gte: input.from, lte: input.to },
+        },
+        orderBy: [{ shiftDate: "asc" }, { startTime: "asc" }],
+        include: {
+          staffMember: {
+            select: { id: true, firstName: true, lastName: true },
+          },
+          serviceUser: {
+            select: { id: true, firstName: true, lastName: true },
+          },
+        },
+      });
+    }),
+
   /** IRota.getUnfilledShifts(dateRange) */
   getUnfilledShifts: protectedProcedure
     .input(

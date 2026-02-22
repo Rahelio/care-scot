@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
-import { ArrowLeft, CheckCircle2, XCircle, Clock, Minus } from "lucide-react";
+import { ArrowLeft, CheckCircle2, XCircle, Clock, Minus, Download } from "lucide-react";
 
 import { trpc } from "@/lib/trpc";
+import { downloadCsv } from "@/lib/download-csv";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -171,6 +172,7 @@ export default function TrainingMatrixPage() {
               ))}
             </SelectContent>
           </Select>
+          <ExportMatrixButton />
           <Button variant="outline" size="sm" asChild>
             <Link href="/staff/expiry">Expiry Dashboard</Link>
           </Button>
@@ -282,5 +284,29 @@ export default function TrainingMatrixPage() {
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+function ExportMatrixButton() {
+  const [exporting, setExporting] = useState(false);
+  const { data } = trpc.reports.exportTrainingMatrix.useQuery(undefined, {
+    enabled: exporting,
+    staleTime: 0,
+  });
+
+  useEffect(() => {
+    if (data && exporting) {
+      downloadCsv(data.csv, data.filename);
+      setTimeout(() => {
+        setExporting(false);
+      }, 0);
+    }
+  }, [data, exporting]);
+
+  return (
+    <Button variant="outline" size="sm" onClick={() => setExporting(true)} disabled={exporting}>
+      <Download className="h-4 w-4 mr-1.5" />
+      {exporting ? "Exporting…" : "Export CSV"}
+    </Button>
   );
 }

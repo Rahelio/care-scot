@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, Suspense } from "react";
+import { useState, useEffect, Suspense } from "react";
 import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
 import {
@@ -9,10 +9,12 @@ import {
   Shield,
   BellRing,
   ClipboardCheck,
+  Download,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { trpc } from "@/lib/trpc";
+import { downloadCsv } from "@/lib/download-csv";
 import { IncidentList } from "@/components/modules/incidents/incident-list";
 import { SafeguardingList } from "@/components/modules/incidents/safeguarding-list";
 import { CiNotificationsList } from "@/components/modules/incidents/ci-notifications-list";
@@ -65,12 +67,15 @@ function IncidentsHub() {
         </div>
         <div className="flex items-center gap-2 shrink-0">
           {activeTab === "incidents" && (
-            <Button asChild>
-              <Link href="/incidents/new">
-                <Plus className="h-4 w-4 mr-1.5" />
-                Report Incident
-              </Link>
-            </Button>
+            <>
+              <ExportIncidentsButton />
+              <Button asChild>
+                <Link href="/incidents/new">
+                  <Plus className="h-4 w-4 mr-1.5" />
+                  Report Incident
+                </Link>
+              </Button>
+            </>
           )}
           {activeTab === "safeguarding" && (
             <Button
@@ -256,5 +261,29 @@ function Pagination({
         Next
       </Button>
     </div>
+  );
+}
+
+function ExportIncidentsButton() {
+  const [exporting, setExporting] = useState(false);
+  const { data } = trpc.reports.exportIncidents.useQuery(
+    {},
+    { enabled: exporting, staleTime: 0 },
+  );
+
+  useEffect(() => {
+    if (data && exporting) {
+      downloadCsv(data.csv, data.filename);
+      setTimeout(() => {
+        setExporting(false);
+      }, 0);
+    }
+  }, [data, exporting]);
+
+  return (
+    <Button variant="outline" size="sm" onClick={() => setExporting(true)} disabled={exporting}>
+      <Download className="h-4 w-4 mr-1.5" />
+      {exporting ? "Exporting…" : "Export CSV"}
+    </Button>
   );
 }

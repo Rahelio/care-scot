@@ -14,6 +14,9 @@ import {
   LogOut,
   LayoutDashboard,
   Menu,
+  BarChart2,
+  Bell,
+  Settings,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -33,6 +36,9 @@ const NAV_ITEMS = [
   { label: "Incidents", href: "/incidents", icon: AlertTriangle },
   { label: "Compliance", href: "/compliance", icon: ShieldCheck },
   { label: "Rota", href: "/rota", icon: Calendar },
+  { label: "Reports", href: "/reports", icon: BarChart2 },
+  { label: "Notifications", href: "/notifications", icon: Bell },
+  { label: "Settings", href: "/settings", icon: Settings },
 ];
 
 const ROLE_LABELS: Record<string, string> = {

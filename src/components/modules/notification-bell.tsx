@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Bell } from "lucide-react";
 import { trpc } from "@/lib/trpc";
@@ -124,6 +125,17 @@ export function NotificationBell() {
               </div>
             ))
           )}
+        </div>
+
+        {/* Footer */}
+        <DropdownMenuSeparator />
+        <div className="px-4 py-2">
+          <Link
+            href="/notifications"
+            className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+          >
+            View all notifications
+          </Link>
         </div>
       </DropdownMenuContent>
     </DropdownMenu>

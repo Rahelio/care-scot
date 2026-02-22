@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import Link from "next/link";
-import { ChevronRight, Plus, AlertTriangle } from "lucide-react";
+import { ChevronRight, Plus, AlertTriangle, Download } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/table";
 import { trpc } from "@/lib/trpc";
 import { formatDate } from "@/lib/utils";
+import { downloadCsv } from "@/lib/download-csv";
 import { COMPLAINT_STATUS_CONFIG } from "./compliance-meta";
 
 export function ComplaintList() {
@@ -55,6 +56,7 @@ export function ComplaintList() {
           </SelectContent>
         </Select>
         <div className="flex-1" />
+        <ExportComplaintsButton />
         <Button asChild size="sm">
           <Link href="/compliance/complaints/new">
             <Plus className="h-4 w-4 mr-1" /> Record Complaint
@@ -63,7 +65,7 @@ export function ComplaintList() {
       </div>
 
       {isPending ? (
-        <div className="py-12 text-center text-muted-foreground">Loading…</div>
+        <div className="space-y-3 py-4">{Array.from({ length: 4 }).map((_, i) => (<div key={i} className="h-16 w-full animate-pulse rounded-lg bg-muted" />))}</div>
       ) : items.length === 0 ? (
         <div className="py-12 text-center text-muted-foreground">
           No complaints recorded.
@@ -154,5 +156,29 @@ export function ComplaintList() {
         </div>
       )}
     </div>
+  );
+}
+
+function ExportComplaintsButton() {
+  const [exporting, setExporting] = useState(false);
+  const { data } = trpc.reports.exportComplaints.useQuery(
+    {},
+    { enabled: exporting, staleTime: 0 },
+  );
+
+  useEffect(() => {
+    if (data && exporting) {
+      downloadCsv(data.csv, data.filename);
+      setTimeout(() => {
+        setExporting(false);
+      }, 0);
+    }
+  }, [data, exporting]);
+
+  return (
+    <Button variant="outline" size="sm" onClick={() => setExporting(true)} disabled={exporting}>
+      <Download className="h-4 w-4 mr-1.5" />
+      {exporting ? "Exporting…" : "Export CSV"}
+    </Button>
   );
 }
