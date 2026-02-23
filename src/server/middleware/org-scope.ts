@@ -47,6 +47,16 @@ const ORG_SCOPED_MODELS = new Set([
   "RotaShift",
   "AuditLog",
   "User",
+  "Funder",
+  "RateCard",
+  "RateCardLine",
+  "MileageRate",
+  "CarePackage",
+  "BillableVisit",
+  "BankHoliday",
+  "Invoice",
+  "InvoiceLine",
+  "CreditNote",
 ]);
 
 /**

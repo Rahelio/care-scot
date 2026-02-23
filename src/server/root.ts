@@ -10,6 +10,7 @@ import { filesRouter } from "./routers/files";
 import { notificationsRouter } from "./routers/notifications";
 import { settingsRouter } from "./routers/settings";
 import { reportsRouter } from "./routers/reports";
+import { financialRouter } from "./routers/financial";
 
 export const appRouter = router({
   clients: clientsRouter,
@@ -23,6 +24,7 @@ export const appRouter = router({
   notifications: notificationsRouter,
   settings: settingsRouter,
   reports: reportsRouter,
+  financial: financialRouter,
 });
 
 export type AppRouter = typeof appRouter;

@@ -17,6 +17,7 @@ import {
   BarChart2,
   Bell,
   Settings,
+  PoundSterling,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -35,6 +36,7 @@ const NAV_ITEMS = [
   { label: "Medication", href: "/medication", icon: Pill },
   { label: "Incidents", href: "/incidents", icon: AlertTriangle },
   { label: "Compliance", href: "/compliance", icon: ShieldCheck },
+  { label: "Financial", href: "/financial", icon: PoundSterling },
   { label: "Rota", href: "/rota", icon: Calendar },
   { label: "Reports", href: "/reports", icon: BarChart2 },
   { label: "Notifications", href: "/notifications", icon: Bell },

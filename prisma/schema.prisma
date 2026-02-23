@@ -377,6 +377,70 @@ enum StorageProvider {
   S3
 }
 
+// ─── Financial Module Enums ───────────────────────────────────────────────
+
+enum FunderType {
+  LOCAL_AUTHORITY
+  HEALTH_BOARD
+  PRIVATE
+  SDS
+  OTHER
+}
+
+enum DayType {
+  WEEKDAY
+  SATURDAY
+  SUNDAY
+  BANK_HOLIDAY
+}
+
+enum BillingTimeBasis {
+  SCHEDULED
+  ACTUAL
+}
+
+enum InvoiceFrequency {
+  WEEKLY
+  FORTNIGHTLY
+  MONTHLY
+}
+
+enum CarePackageStatus {
+  ACTIVE
+  ON_HOLD
+  ENDED
+}
+
+enum BillableVisitStatus {
+  PENDING
+  APPROVED
+  DISPUTED
+  INVOICED
+  VOID
+}
+
+enum InvoiceStatus {
+  DRAFT
+  SENT
+  PAID
+  PARTIALLY_PAID
+  OVERDUE
+  VOID
+  WRITTEN_OFF
+}
+
+enum CreditNoteStatus {
+  DRAFT
+  SENT
+  APPLIED
+}
+
+enum HolidayRegion {
+  SCOTLAND
+  ENGLAND_WALES
+  ALL
+}
+
 enum ShiftType {
   REGULAR
   ON_CALL
@@ -406,6 +470,7 @@ model Organisation {
   email                     String?
   registrationConditions    String?  @map("registration_conditions") @db.Text
   isActive                  Boolean  @default(true) @map("is_active")
+  invoicePrefix             String?  @map("invoice_prefix")
   createdAt                 DateTime @default(now()) @map("created_at") @db.Timestamptz()
   updatedAt                 DateTime @updatedAt @map("updated_at") @db.Timestamptz()
 
@@ -429,6 +494,13 @@ model Organisation {
   files                        File[]
   rotaShifts                   RotaShift[]
   notifications                Notification[]
+  funders                      Funder[]
+  rateCards                    RateCard[]
+  carePackages                 CarePackage[]
+  billableVisits               BillableVisit[]
+  bankHolidays                 BankHoliday[]
+  invoices                     Invoice[]
+  creditNotes                  CreditNote[]
 
   @@map("organisations")
 }
@@ -477,6 +549,7 @@ model User {
   conductedEquipmentChecks     EquipmentCheck[]                 @relation("EquipmentCheckedBy")
   uploadedFiles                File[]
   notifications                Notification[]
+  approvedBillableVisits       BillableVisit[]                  @relation("BillableVisitApprovedBy")
 
   @@map("users")
 }
@@ -596,6 +669,9 @@ model ServiceUser {
   compliments             Compliment[]
   satisfactionSurveys     SatisfactionSurvey[]
   rotaShifts              RotaShift[]
+  carePackages            CarePackage[]
+  billableVisits          BillableVisit[]
+  invoiceLines            InvoiceLine[]
 
   @@map("service_users")
 }
@@ -787,6 +863,8 @@ model CareVisitRecord {
   actualStart           DateTime? @map("actual_start") @db.Timestamptz()
   actualEnd             DateTime? @map("actual_end") @db.Timestamptz()
   staffMemberId         String    @map("staff_member_id") @db.Uuid
+  carePackageId         String?   @map("care_package_id") @db.Uuid
+  mileageMiles          Decimal?  @map("mileage_miles") @db.Decimal(8, 2)
   tasksCompleted        Json?     @map("tasks_completed") @db.JsonB
   wellbeingObservations String?   @map("wellbeing_observations") @db.Text
   refusedCare           Boolean   @default(false) @map("refused_care")
@@ -800,9 +878,11 @@ model CareVisitRecord {
   createdBy             String?   @map("created_by") @db.Uuid
   updatedBy             String?   @map("updated_by") @db.Uuid
 
-  serviceUser     ServiceUser @relation(fields: [serviceUserId], references: [id])
-  staffMember     StaffMember @relation(fields: [staffMemberId], references: [id])
-  signedOffByUser User?       @relation("CareVisitSignedOffBy", fields: [signedOffBy], references: [id])
+  serviceUser     ServiceUser   @relation(fields: [serviceUserId], references: [id])
+  staffMember     StaffMember   @relation(fields: [staffMemberId], references: [id])
+  signedOffByUser User?         @relation("CareVisitSignedOffBy", fields: [signedOffBy], references: [id])
+  carePackage     CarePackage?  @relation(fields: [carePackageId], references: [id])
+  billableVisit   BillableVisit?
 
   @@map("care_visit_records")
 }
@@ -1595,6 +1675,270 @@ model RotaAvailability {
   staffMember StaffMember @relation(fields: [staffMemberId], references: [id])
 
   @@map("rota_availability")
+}
+
+// ─────────────────────────────────────────────
+// MODULE: FINANCIAL
+// ─────────────────────────────────────────────
+
+model Funder {
+  id                 String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organisationId     String           @map("organisation_id") @db.Uuid
+  name               String
+  funderType         FunderType       @map("funder_type")
+  contactName        String?          @map("contact_name")
+  contactEmail       String?          @map("contact_email")
+  contactPhone       String?          @map("contact_phone")
+  addressLine1       String?          @map("address_line1")
+  addressLine2       String?          @map("address_line2")
+  city               String?
+  postcode           String?
+  paymentTermsDays   Int              @default(30) @map("payment_terms_days")
+  invoiceFrequency   InvoiceFrequency @default(MONTHLY) @map("invoice_frequency")
+  billingTimeBasis   BillingTimeBasis @default(SCHEDULED) @map("billing_time_basis")
+  notes              String?          @db.Text
+  isActive           Boolean          @default(true) @map("is_active")
+  createdAt          DateTime         @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt          DateTime         @updatedAt @map("updated_at") @db.Timestamptz()
+  createdBy          String?          @map("created_by") @db.Uuid
+  updatedBy          String?          @map("updated_by") @db.Uuid
+
+  organisation  Organisation   @relation(fields: [organisationId], references: [id])
+  rateCards     RateCard[]
+  carePackages  CarePackage[]
+  invoices      Invoice[]
+  creditNotes   CreditNote[]
+
+  @@map("funders")
+}
+
+model RateCard {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organisationId String    @map("organisation_id") @db.Uuid
+  funderId       String?   @map("funder_id") @db.Uuid
+  name           String
+  effectiveFrom  DateTime  @map("effective_from") @db.Date
+  effectiveTo    DateTime? @map("effective_to") @db.Date
+  isActive       Boolean   @default(true) @map("is_active")
+  notes          String?   @db.Text
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt      DateTime  @updatedAt @map("updated_at") @db.Timestamptz()
+  createdBy      String?   @map("created_by") @db.Uuid
+  updatedBy      String?   @map("updated_by") @db.Uuid
+
+  organisation  Organisation   @relation(fields: [organisationId], references: [id])
+  funder        Funder?        @relation(fields: [funderId], references: [id])
+  lines         RateCardLine[]
+  mileageRates  MileageRate[]
+  carePackages  CarePackage[]
+
+  @@map("rate_cards")
+}
+
+model RateCardLine {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  rateCardId      String   @map("rate_card_id") @db.Uuid
+  organisationId  String   @map("organisation_id") @db.Uuid
+  dayType         DayType  @map("day_type")
+  timeBandStart   String?  @map("time_band_start") // "HH:mm"
+  timeBandEnd     String?  @map("time_band_end")
+  ratePerHour     Decimal  @map("rate_per_hour") @db.Decimal(10, 2)
+  carersRequired  Int      @default(1) @map("carers_required")
+  description     String?
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+
+  rateCard RateCard @relation(fields: [rateCardId], references: [id], onDelete: Cascade)
+
+  @@map("rate_card_lines")
+}
+
+model MileageRate {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  rateCardId     String   @map("rate_card_id") @db.Uuid
+  organisationId String   @map("organisation_id") @db.Uuid
+  ratePerMile    Decimal  @map("rate_per_mile") @db.Decimal(10, 4)
+  description    String?
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+
+  rateCard RateCard @relation(fields: [rateCardId], references: [id], onDelete: Cascade)
+
+  @@map("mileage_rates")
+}
+
+model CarePackage {
+  id                       String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organisationId           String            @map("organisation_id") @db.Uuid
+  serviceUserId            String            @map("service_user_id") @db.Uuid
+  funderId                 String            @map("funder_id") @db.Uuid
+  rateCardId               String            @map("rate_card_id") @db.Uuid
+  packageName              String            @map("package_name")
+  funderReference          String?           @map("funder_reference")
+  billingTimeBasis         BillingTimeBasis  @default(SCHEDULED) @map("billing_time_basis")
+  roundingIncrementMinutes Int               @default(15) @map("rounding_increment_minutes")
+  minimumBillableMinutes   Int               @default(15) @map("minimum_billable_minutes")
+  carersRequired           Int               @default(1) @map("carers_required")
+  mileageBillable          Boolean           @default(false) @map("mileage_billable")
+  startDate                DateTime          @map("start_date") @db.Date
+  endDate                  DateTime?         @map("end_date") @db.Date
+  notes                    String?           @db.Text
+  status                   CarePackageStatus @default(ACTIVE)
+  createdAt                DateTime          @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt                DateTime          @updatedAt @map("updated_at") @db.Timestamptz()
+  createdBy                String?           @map("created_by") @db.Uuid
+  updatedBy                String?           @map("updated_by") @db.Uuid
+
+  organisation    Organisation      @relation(fields: [organisationId], references: [id])
+  serviceUser     ServiceUser       @relation(fields: [serviceUserId], references: [id])
+  funder          Funder            @relation(fields: [funderId], references: [id])
+  rateCard        RateCard          @relation(fields: [rateCardId], references: [id])
+  careVisitRecords CareVisitRecord[]
+  billableVisits  BillableVisit[]
+  invoiceLines    InvoiceLine[]
+
+  @@map("care_packages")
+}
+
+model BillableVisit {
+  id                     String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organisationId         String             @map("organisation_id") @db.Uuid
+  careVisitRecordId      String             @unique @map("care_visit_record_id") @db.Uuid
+  carePackageId          String             @map("care_package_id") @db.Uuid
+  serviceUserId          String             @map("service_user_id") @db.Uuid
+  visitDate              DateTime           @map("visit_date") @db.Date
+  scheduledStart         DateTime           @map("scheduled_start") @db.Timestamptz()
+  scheduledEnd           DateTime           @map("scheduled_end") @db.Timestamptz()
+  actualStart            DateTime?          @map("actual_start") @db.Timestamptz()
+  actualEnd              DateTime?          @map("actual_end") @db.Timestamptz()
+  billingStart           DateTime           @map("billing_start") @db.Timestamptz()
+  billingEnd             DateTime           @map("billing_end") @db.Timestamptz()
+  billingDurationMinutes Int                @map("billing_duration_minutes")
+  carersRequired         Int                @default(1) @map("carers_required")
+  dayType                DayType            @map("day_type")
+  appliedRatePerHour     Decimal            @map("applied_rate_per_hour") @db.Decimal(10, 2)
+  lineTotal              Decimal            @map("line_total") @db.Decimal(10, 2)
+  mileageMiles           Decimal?           @map("mileage_miles") @db.Decimal(8, 2)
+  mileageRate            Decimal?           @map("mileage_rate") @db.Decimal(10, 4)
+  mileageTotal           Decimal?           @map("mileage_total") @db.Decimal(10, 2)
+  visitTotal             Decimal            @map("visit_total") @db.Decimal(10, 2)
+  status                 BillableVisitStatus @default(PENDING)
+  disputeReason          String?            @map("dispute_reason") @db.Text
+  overrideAmount         Decimal?           @map("override_amount") @db.Decimal(10, 2)
+  overrideReason         String?            @map("override_reason") @db.Text
+  approvedById           String?            @map("approved_by_id") @db.Uuid
+  approvedAt             DateTime?          @map("approved_at") @db.Timestamptz()
+  invoiceLineId          String?            @map("invoice_line_id") @db.Uuid
+  createdAt              DateTime           @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt              DateTime           @updatedAt @map("updated_at") @db.Timestamptz()
+  createdBy              String?            @map("created_by") @db.Uuid
+  updatedBy              String?            @map("updated_by") @db.Uuid
+
+  organisation    Organisation    @relation(fields: [organisationId], references: [id])
+  careVisitRecord CareVisitRecord @relation(fields: [careVisitRecordId], references: [id])
+  carePackage     CarePackage     @relation(fields: [carePackageId], references: [id])
+  serviceUser     ServiceUser     @relation(fields: [serviceUserId], references: [id])
+  approvedBy      User?           @relation("BillableVisitApprovedBy", fields: [approvedById], references: [id])
+  invoiceLine     InvoiceLine?    @relation(fields: [invoiceLineId], references: [id])
+
+  @@map("billable_visits")
+}
+
+model BankHoliday {
+  id             String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organisationId String        @map("organisation_id") @db.Uuid
+  holidayDate    DateTime      @map("holiday_date") @db.Date
+  name           String
+  appliesTo      HolidayRegion @default(SCOTLAND) @map("applies_to")
+  createdAt      DateTime      @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt      DateTime      @updatedAt @map("updated_at") @db.Timestamptz()
+
+  organisation Organisation @relation(fields: [organisationId], references: [id])
+
+  @@unique([organisationId, holidayDate])
+  @@map("bank_holidays")
+}
+
+model Invoice {
+  id               String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organisationId   String        @map("organisation_id") @db.Uuid
+  invoiceNumber    String        @map("invoice_number")
+  funderId         String        @map("funder_id") @db.Uuid
+  invoiceDate      DateTime      @map("invoice_date") @db.Date
+  dueDate          DateTime      @map("due_date") @db.Date
+  periodStart      DateTime      @map("period_start") @db.Date
+  periodEnd        DateTime      @map("period_end") @db.Date
+  subtotal         Decimal       @db.Decimal(12, 2)
+  vatRate          Decimal       @default(0) @map("vat_rate") @db.Decimal(5, 2)
+  vatAmount        Decimal       @default(0) @map("vat_amount") @db.Decimal(12, 2)
+  total            Decimal       @db.Decimal(12, 2)
+  status           InvoiceStatus @default(DRAFT)
+  sentDate         DateTime?     @map("sent_date") @db.Date
+  paidDate         DateTime?     @map("paid_date") @db.Date
+  paidAmount       Decimal?      @map("paid_amount") @db.Decimal(12, 2)
+  paymentReference String?       @map("payment_reference")
+  notes            String?       @db.Text
+  documentId       String?       @map("document_id") @db.Uuid
+  createdAt        DateTime      @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt        DateTime      @updatedAt @map("updated_at") @db.Timestamptz()
+  createdBy        String?       @map("created_by") @db.Uuid
+  updatedBy        String?       @map("updated_by") @db.Uuid
+
+  organisation Organisation  @relation(fields: [organisationId], references: [id])
+  funder       Funder        @relation(fields: [funderId], references: [id])
+  lines        InvoiceLine[]
+  creditNotes  CreditNote[]
+
+  @@unique([organisationId, invoiceNumber])
+  @@map("invoices")
+}
+
+model InvoiceLine {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  invoiceId      String   @map("invoice_id") @db.Uuid
+  serviceUserId  String   @map("service_user_id") @db.Uuid
+  carePackageId  String   @map("care_package_id") @db.Uuid
+  description    String?
+  totalVisits    Int      @default(0) @map("total_visits")
+  totalHours     Decimal  @default(0) @map("total_hours") @db.Decimal(10, 2)
+  totalMileage   Decimal  @default(0) @map("total_mileage") @db.Decimal(10, 2)
+  careTotal      Decimal  @default(0) @map("care_total") @db.Decimal(10, 2)
+  mileageTotal   Decimal  @default(0) @map("mileage_total") @db.Decimal(10, 2)
+  lineTotal      Decimal  @default(0) @map("line_total") @db.Decimal(10, 2)
+  notes          String?  @db.Text
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+
+  invoice        Invoice         @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  serviceUser    ServiceUser     @relation(fields: [serviceUserId], references: [id])
+  carePackage    CarePackage     @relation(fields: [carePackageId], references: [id])
+  billableVisits BillableVisit[]
+
+  @@map("invoice_lines")
+}
+
+model CreditNote {
+  id               String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organisationId   String           @map("organisation_id") @db.Uuid
+  creditNoteNumber String           @map("credit_note_number")
+  invoiceId        String           @map("invoice_id") @db.Uuid
+  funderId         String           @map("funder_id") @db.Uuid
+  creditDate       DateTime         @map("credit_date") @db.Date
+  amount           Decimal          @db.Decimal(12, 2)
+  reason           String?          @db.Text
+  status           CreditNoteStatus @default(DRAFT)
+  documentId       String?          @map("document_id") @db.Uuid
+  createdAt        DateTime         @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt        DateTime         @updatedAt @map("updated_at") @db.Timestamptz()
+  createdBy        String?          @map("created_by") @db.Uuid
+  updatedBy        String?          @map("updated_by") @db.Uuid
+
+  organisation Organisation @relation(fields: [organisationId], references: [id])
+  invoice      Invoice      @relation(fields: [invoiceId], references: [id])
+  funder       Funder       @relation(fields: [funderId], references: [id])
+
+  @@unique([organisationId, creditNoteNumber])
+  @@map("credit_notes")
 }
 
 // ─────────────────────────────────────────────
