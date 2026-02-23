@@ -381,7 +381,7 @@ cat > /tmp/github-oidc-trust.json << EOF
         "token.actions.githubusercontent.com:aud": "sts.amazonaws.com"
       },
       "StringLike": {
-        "token.actions.githubusercontent.com:sub": "repo:YOUR_GITHUB_ORG/YOUR_REPO_NAME:ref:refs/heads/main"
+        "token.actions.githubusercontent.com:sub": "repo:Rahelio/care-scot:ref:refs/heads/main"
       }
     }
   }]
