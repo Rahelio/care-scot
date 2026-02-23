@@ -58,7 +58,7 @@ export const incidentsRouter = router({
       z.object({
         status: z.nativeEnum(IncidentStatus).optional(),
         severity: z.nativeEnum(IncidentSeverity).optional(),
-        serviceUserId: z.string().uuid().optional(),
+        serviceUserId: z.string().min(1).optional(),
         from: z.date().optional(),
         to: z.date().optional(),
         page: z.number().min(1).default(1),
@@ -103,7 +103,7 @@ export const incidentsRouter = router({
     }),
 
   getById: protectedProcedure
-    .input(z.object({ id: z.string().uuid() }))
+    .input(z.object({ id: z.string().min(1) }))
     .query(async ({ ctx, input }) => {
       const { organisationId } = ctx.user as { organisationId: string };
       return ctx.prisma.incident.findUniqueOrThrow({
@@ -132,8 +132,8 @@ export const incidentsRouter = router({
   create: protectedProcedure
     .input(
       z.object({
-        serviceUserId: z.string().uuid().optional(),
-        staffMemberId: z.string().uuid().optional(),
+        serviceUserId: z.string().min(1).optional(),
+        staffMemberId: z.string().min(1).optional(),
         incidentType: z.nativeEnum(IncidentType),
         incidentDate: z.string(), // "YYYY-MM-DD"
         incidentTime: z.string().optional(),
@@ -203,7 +203,7 @@ export const incidentsRouter = router({
   update: incManageProcedure
     .input(
       z.object({
-        id: z.string().uuid(),
+        id: z.string().min(1),
         investigationNotes: z.string().optional(),
         rootCause: z.string().optional(),
         actionsToPreventRecurrence: z.array(z.string()).optional(),
@@ -264,7 +264,7 @@ export const incidentsRouter = router({
     list: protectedProcedure
       .input(
         z.object({
-          serviceUserId: z.string().uuid().optional(),
+          serviceUserId: z.string().min(1).optional(),
           status: z.nativeEnum(SafeguardingStatus).optional(),
           page: z.number().min(1).default(1),
           limit: z.number().min(1).max(100).default(20),
@@ -300,7 +300,7 @@ export const incidentsRouter = router({
       }),
 
     getById: protectedProcedure
-      .input(z.object({ id: z.string().uuid() }))
+      .input(z.object({ id: z.string().min(1) }))
       .query(async ({ ctx, input }) => {
         const { organisationId } = ctx.user as { organisationId: string };
         const concern = await ctx.prisma.safeguardingConcern.findUnique({
@@ -323,7 +323,7 @@ export const incidentsRouter = router({
     create: protectedProcedure
       .input(
         z.object({
-          serviceUserId: z.string().uuid(),
+          serviceUserId: z.string().min(1),
           concernDate: z.string(), // "YYYY-MM-DD"
           concernType: z.string(),
           description: z.string().min(1, "Description is required"),
@@ -368,7 +368,7 @@ export const incidentsRouter = router({
     update: incManageProcedure
       .input(
         z.object({
-          id: z.string().uuid(),
+          id: z.string().min(1),
           referredTo: z.string().optional(),
           referralDate: z.string().optional(), // "YYYY-MM-DD"
           referralReference: z.string().optional(),
@@ -454,7 +454,7 @@ export const incidentsRouter = router({
     create: incManageProcedure
       .input(
         z.object({
-          incidentId: z.string().uuid().optional(),
+          incidentId: z.string().min(1).optional(),
           notificationType: z.nativeEnum(CareInspectorateNotificationType),
           description: z.string().optional(),
           actionsTaken: z.string().optional(),
@@ -481,7 +481,7 @@ export const incidentsRouter = router({
     update: incManageProcedure
       .input(
         z.object({
-          id: z.string().uuid(),
+          id: z.string().min(1),
           submittedDate: z.string().optional(), // "YYYY-MM-DD"
           careInspectorateReference: z.string().optional(),
           description: z.string().optional(),
@@ -607,7 +607,7 @@ export const incidentsRouter = router({
   listSafeguarding: protectedProcedure
     .input(
       z.object({
-        serviceUserId: z.string().uuid().optional(),
+        serviceUserId: z.string().min(1).optional(),
         page: z.number().min(1).default(1),
         limit: z.number().min(1).max(100).default(20),
       })
@@ -634,7 +634,7 @@ export const incidentsRouter = router({
   createSafeguardingConcern: protectedProcedure
     .input(
       z.object({
-        serviceUserId: z.string().uuid(),
+        serviceUserId: z.string().min(1),
         concernDate: z.date(),
         concernType: z.string(),
         description: z.string().optional(),

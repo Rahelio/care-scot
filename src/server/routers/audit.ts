@@ -17,7 +17,7 @@ export const auditRouter = router({
       z.object({
         entityType: z.string().optional(),
         action: z.nativeEnum(AuditAction).optional(),
-        userId: z.string().uuid().optional(),
+        userId: z.string().min(1).optional(),
         dateFrom: z.date().optional(),
         dateTo: z.date().optional(),
         page: z.number().min(1).default(1),
@@ -66,7 +66,7 @@ export const auditRouter = router({
     .input(
       z.object({
         entityType: z.string(),
-        entityId: z.string().uuid(),
+        entityId: z.string().min(1),
       }),
     )
     .query(async ({ ctx, input }) => {

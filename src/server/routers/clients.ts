@@ -62,7 +62,7 @@ export const clientsRouter = router({
 
   /** Minimal fetch for profile layout header */
   getProfile: protectedProcedure
-    .input(z.object({ id: z.string().uuid() }))
+    .input(z.object({ id: z.string().min(1) }))
     .query(async ({ ctx, input }) => {
       const { organisationId } = ctx.user as { organisationId: string };
 
@@ -88,7 +88,7 @@ export const clientsRouter = router({
     }),
 
   getById: protectedProcedure
-    .input(z.object({ id: z.string().uuid() }))
+    .input(z.object({ id: z.string().min(1) }))
     .query(async ({ ctx, input }) => {
       const { organisationId } = ctx.user as { organisationId: string };
       return ctx.prisma.serviceUser.findUniqueOrThrow({
@@ -133,7 +133,7 @@ export const clientsRouter = router({
   updateStatus: protectedProcedure
     .input(
       z.object({
-        id: z.string().uuid(),
+        id: z.string().min(1),
         status: z.nativeEnum(ServiceUserStatus),
         dischargeDate: z.coerce.date().optional(),
         dischargeReason: z.string().optional(),
@@ -154,7 +154,7 @@ export const clientsRouter = router({
   update: protectedProcedure
     .input(
       z.object({
-        id: z.string().uuid(),
+        id: z.string().min(1),
         firstName: z.string().min(1).optional(),
         lastName: z.string().min(1).optional(),
         dateOfBirth: z.coerce.date().optional(),
@@ -200,7 +200,7 @@ export const clientsRouter = router({
   addContact: protectedProcedure
     .input(
       z.object({
-        serviceUserId: z.string().uuid(),
+        serviceUserId: z.string().min(1),
         contactName: z.string().min(1),
         relationship: z.string().optional(),
         phone: z.string().optional(),
@@ -233,7 +233,7 @@ export const clientsRouter = router({
   updateContact: protectedProcedure
     .input(
       z.object({
-        id: z.string().uuid(),
+        id: z.string().min(1),
         contactName: z.string().min(1).optional(),
         relationship: z.string().optional(),
         phone: z.string().optional(),
@@ -256,7 +256,7 @@ export const clientsRouter = router({
     }),
 
   removeContact: protectedProcedure
-    .input(z.object({ id: z.string().uuid() }))
+    .input(z.object({ id: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {
       return ctx.prisma.serviceUserContact.delete({ where: { id: input.id } });
     }),
@@ -268,7 +268,7 @@ export const clientsRouter = router({
   addHealthcareProfessional: protectedProcedure
     .input(
       z.object({
-        serviceUserId: z.string().uuid(),
+        serviceUserId: z.string().min(1),
         professionalName: z.string().min(1),
         role: z.string().optional(),
         organisation: z.string().optional(),
@@ -295,7 +295,7 @@ export const clientsRouter = router({
     }),
 
   removeHealthcareProfessional: protectedProcedure
-    .input(z.object({ id: z.string().uuid() }))
+    .input(z.object({ id: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {
       return ctx.prisma.serviceUserHealthcareProfessional.delete({
         where: { id: input.id },
@@ -307,7 +307,7 @@ export const clientsRouter = router({
   // ─────────────────────────────────────────
 
   listPersonalPlans: protectedProcedure
-    .input(z.object({ serviceUserId: z.string().uuid() }))
+    .input(z.object({ serviceUserId: z.string().min(1) }))
     .query(async ({ ctx, input }) => {
       const { organisationId } = ctx.user as { organisationId: string };
       return ctx.prisma.personalPlan.findMany({
@@ -323,7 +323,7 @@ export const clientsRouter = router({
   createPersonalPlan: protectedProcedure
     .input(
       z.object({
-        serviceUserId: z.string().uuid(),
+        serviceUserId: z.string().min(1),
         initialAssessment: z.string().optional(),
         healthNeeds: z.string().optional(),
         welfareNeeds: z.string().optional(),
@@ -380,7 +380,7 @@ export const clientsRouter = router({
   updatePersonalPlan: protectedProcedure
     .input(
       z.object({
-        id: z.string().uuid(),
+        id: z.string().min(1),
         initialAssessment: z.string().optional(),
         healthNeeds: z.string().optional(),
         welfareNeeds: z.string().optional(),
@@ -418,7 +418,7 @@ export const clientsRouter = router({
     }),
 
   getActivePlan: protectedProcedure
-    .input(z.object({ serviceUserId: z.string().uuid() }))
+    .input(z.object({ serviceUserId: z.string().min(1) }))
     .query(async ({ ctx, input }) => {
       const { organisationId } = ctx.user as { organisationId: string };
       return ctx.prisma.personalPlan.findFirst({
@@ -433,8 +433,8 @@ export const clientsRouter = router({
   notifyPlanReady: protectedProcedure
     .input(
       z.object({
-        planId: z.string().uuid(),
-        serviceUserId: z.string().uuid(),
+        planId: z.string().min(1),
+        serviceUserId: z.string().min(1),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -484,7 +484,7 @@ export const clientsRouter = router({
     }),
 
   approvePlan: protectedProcedure
-    .input(z.object({ id: z.string().uuid() }))
+    .input(z.object({ id: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {
       const { id: userId, role } = ctx.user as { id: string; role: string };
       if (!MANAGER_ROLES.includes(role as never)) {
@@ -511,7 +511,7 @@ export const clientsRouter = router({
   listRiskAssessments: protectedProcedure
     .input(
       z.object({
-        serviceUserId: z.string().uuid(),
+        serviceUserId: z.string().min(1),
         status: z.enum(["ACTIVE", "SUPERSEDED"]).optional(),
       })
     )
@@ -533,7 +533,7 @@ export const clientsRouter = router({
   createRiskAssessment: protectedProcedure
     .input(
       z.object({
-        serviceUserId: z.string().uuid(),
+        serviceUserId: z.string().min(1),
         assessmentType: z.nativeEnum(RiskAssessmentType),
         riskLevel: z.nativeEnum(RiskLevel),
         assessmentDetail: z.string().optional(),
@@ -575,7 +575,7 @@ export const clientsRouter = router({
   getRiskAssessmentHistory: protectedProcedure
     .input(
       z.object({
-        serviceUserId: z.string().uuid(),
+        serviceUserId: z.string().min(1),
         assessmentType: z.nativeEnum(RiskAssessmentType),
       })
     )
@@ -597,7 +597,7 @@ export const clientsRouter = router({
   updateRiskAssessment: protectedProcedure
     .input(
       z.object({
-        id: z.string().uuid(),
+        id: z.string().min(1),
         riskLevel: z.nativeEnum(RiskLevel).optional(),
         assessmentDetail: z.string().optional(),
         controlMeasures: z.string().optional(),
@@ -618,7 +618,7 @@ export const clientsRouter = router({
   // ─────────────────────────────────────────
 
   listConsentRecords: protectedProcedure
-    .input(z.object({ serviceUserId: z.string().uuid() }))
+    .input(z.object({ serviceUserId: z.string().min(1) }))
     .query(async ({ ctx, input }) => {
       const { organisationId } = ctx.user as { organisationId: string };
       return ctx.prisma.consentRecord.findMany({
@@ -630,7 +630,7 @@ export const clientsRouter = router({
   createConsentRecord: protectedProcedure
     .input(
       z.object({
-        serviceUserId: z.string().uuid(),
+        serviceUserId: z.string().min(1),
         consentType: z.nativeEnum(ConsentType),
         consentGiven: z.boolean(),
         capacityAssessed: z.boolean().default(false),
@@ -658,7 +658,7 @@ export const clientsRouter = router({
   // ─────────────────────────────────────────
 
   listServiceAgreements: protectedProcedure
-    .input(z.object({ serviceUserId: z.string().uuid() }))
+    .input(z.object({ serviceUserId: z.string().min(1) }))
     .query(async ({ ctx, input }) => {
       const { organisationId } = ctx.user as { organisationId: string };
       return ctx.prisma.serviceAgreement.findMany({
@@ -670,7 +670,7 @@ export const clientsRouter = router({
   createServiceAgreement: protectedProcedure
     .input(
       z.object({
-        serviceUserId: z.string().uuid(),
+        serviceUserId: z.string().min(1),
         servicesDescription: z.string().optional(),
         visitFrequency: z.string().optional(),
         visitDurationMinutes: z.number().optional(),
@@ -705,7 +705,7 @@ export const clientsRouter = router({
   listHealthRecords: protectedProcedure
     .input(
       z.object({
-        serviceUserId: z.string().uuid(),
+        serviceUserId: z.string().min(1),
         recordType: z.string().optional(),
       })
     )
@@ -724,7 +724,7 @@ export const clientsRouter = router({
   createHealthRecord: protectedProcedure
     .input(
       z.object({
-        serviceUserId: z.string().uuid(),
+        serviceUserId: z.string().min(1),
         recordType: z.string(),
         title: z.string().min(1),
         description: z.string().optional(),
@@ -753,7 +753,7 @@ export const clientsRouter = router({
   updateServiceAgreement: protectedProcedure
     .input(
       z.object({
-        id: z.string().uuid(),
+        id: z.string().min(1),
         servicesDescription: z.string().optional(),
         visitFrequency: z.string().optional(),
         visitDurationMinutes: z.number().optional(),
@@ -789,7 +789,7 @@ export const clientsRouter = router({
   updateHealthRecord: protectedProcedure
     .input(
       z.object({
-        id: z.string().uuid(),
+        id: z.string().min(1),
         title: z.string().min(1).optional(),
         description: z.string().optional(),
         severity: z.string().optional(),
@@ -822,7 +822,7 @@ export const clientsRouter = router({
   listCareVisits: protectedProcedure
     .input(
       z.object({
-        serviceUserId: z.string().uuid(),
+        serviceUserId: z.string().min(1),
         from: z.coerce.date().optional(),
         to: z.coerce.date().optional(),
         page: z.number().min(1).default(1),
@@ -857,8 +857,8 @@ export const clientsRouter = router({
   createCareVisit: protectedProcedure
     .input(
       z.object({
-        serviceUserId: z.string().uuid(),
-        staffMemberId: z.string().uuid().optional(),
+        serviceUserId: z.string().min(1),
+        staffMemberId: z.string().min(1).optional(),
         visitDate: z.coerce.date(),
         scheduledStart: z.string(), // "HH:MM"
         scheduledEnd: z.string(),
@@ -941,7 +941,7 @@ export const clientsRouter = router({
   updateCareVisit: protectedProcedure
     .input(
       z.object({
-        id: z.string().uuid(),
+        id: z.string().min(1),
         wellbeingObservations: z.string().optional(),
         refusedCare: z.boolean().optional(),
         refusedCareDetails: z.string().optional(),
@@ -1000,7 +1000,7 @@ export const clientsRouter = router({
   // ─────────────────────────────────────────
 
   listReviews: protectedProcedure
-    .input(z.object({ serviceUserId: z.string().uuid() }))
+    .input(z.object({ serviceUserId: z.string().min(1) }))
     .query(async ({ ctx, input }) => {
       const { organisationId } = ctx.user as { organisationId: string };
       return ctx.prisma.serviceUserReview.findMany({
@@ -1015,7 +1015,7 @@ export const clientsRouter = router({
   createReview: protectedProcedure
     .input(
       z.object({
-        serviceUserId: z.string().uuid(),
+        serviceUserId: z.string().min(1),
         reviewDate: z.coerce.date(),
         reviewType: z.enum(["SCHEDULED", "NEEDS_CHANGE", "ANNUAL"]),
         serviceUserFeedback: z.string().optional(),
@@ -1046,7 +1046,7 @@ export const clientsRouter = router({
   updateReview: protectedProcedure
     .input(
       z.object({
-        id: z.string().uuid(),
+        id: z.string().min(1),
         reviewDate: z.coerce.date().optional(),
         reviewType: z.enum(["SCHEDULED", "NEEDS_CHANGE", "ANNUAL"]).optional(),
         serviceUserFeedback: z.string().optional(),
@@ -1077,7 +1077,7 @@ export const clientsRouter = router({
   getVisits: protectedProcedure
     .input(
       z.object({
-        serviceUserId: z.string().uuid(),
+        serviceUserId: z.string().min(1),
         from: z.coerce.date().optional(),
         to: z.coerce.date().optional(),
         page: z.number().min(1).default(1),

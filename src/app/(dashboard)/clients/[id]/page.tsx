@@ -13,10 +13,19 @@ export default function ClientPersonalInfoPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = use(params);
-  const { data: client, isPending } = trpc.clients.getById.useQuery({ id });
+  const { data: client, isPending, isError, error } = trpc.clients.getById.useQuery({ id });
 
   if (isPending) {
     return <div className="py-8 text-center text-muted-foreground">Loading…</div>;
+  }
+
+  if (isError) {
+    return (
+      <div className="py-8 text-center text-destructive">
+        <p className="font-medium">Failed to load client details</p>
+        <p className="text-sm mt-1 text-muted-foreground">{error.message}</p>
+      </div>
+    );
   }
 
   if (!client) return null;

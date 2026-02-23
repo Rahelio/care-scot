@@ -37,7 +37,7 @@ export const notificationsRouter = router({
    * Mark a single notification as read.
    */
   markRead: protectedProcedure
-    .input(z.object({ id: z.string().uuid() }))
+    .input(z.object({ id: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {
       const { id: userId } = ctx.user as { id: string };
       await ctx.prisma.notification.updateMany({

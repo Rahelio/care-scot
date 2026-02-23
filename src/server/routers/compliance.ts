@@ -103,7 +103,7 @@ export const complianceRouter = router({
       }),
 
     getById: protectedProcedure
-      .input(z.object({ id: z.string().uuid() }))
+      .input(z.object({ id: z.string().min(1) }))
       .query(async ({ ctx, input }) => {
         const { organisationId } = ctx.user as { organisationId: string };
         const policy = await ctx.prisma.policy.findUnique({
@@ -161,7 +161,7 @@ export const complianceRouter = router({
     update: manageProcedure
       .input(
         z.object({
-          id: z.string().uuid(),
+          id: z.string().min(1),
           policyName: z.string().min(1).optional(),
           policyCategory: z.nativeEnum(PolicyCategory).optional(),
           status: z.nativeEnum(PolicyStatus).optional(),
@@ -232,7 +232,7 @@ export const complianceRouter = router({
 
     /** Staff member acknowledges a policy */
     acknowledge: protectedProcedure
-      .input(z.object({ policyId: z.string().uuid() }))
+      .input(z.object({ policyId: z.string().min(1) }))
       .mutation(async ({ ctx, input }) => {
         const { staffMemberId } = ctx.user as {
           staffMemberId: string | null;
@@ -268,7 +268,7 @@ export const complianceRouter = router({
 
     /** Get acknowledgment status: total staff + who has acknowledged */
     getAcknowledgmentStatus: protectedProcedure
-      .input(z.object({ policyId: z.string().uuid() }))
+      .input(z.object({ policyId: z.string().min(1) }))
       .query(async ({ ctx, input }) => {
         const { organisationId } = ctx.user as { organisationId: string };
 
@@ -347,7 +347,7 @@ export const complianceRouter = router({
       }),
 
     getById: protectedProcedure
-      .input(z.object({ id: z.string().uuid() }))
+      .input(z.object({ id: z.string().min(1) }))
       .query(async ({ ctx, input }) => {
         const { organisationId } = ctx.user as { organisationId: string };
         const complaint = await ctx.prisma.complaint.findUnique({
@@ -375,7 +375,7 @@ export const complianceRouter = router({
           dateReceived: z.string(), // "YYYY-MM-DD"
           complainantName: z.string().min(1),
           complainantRelationship: z.string().optional(),
-          serviceUserId: z.string().uuid().optional(),
+          serviceUserId: z.string().min(1).optional(),
           natureOfComplaint: z.string().min(1, "Description is required"),
         })
       )
@@ -399,7 +399,7 @@ export const complianceRouter = router({
     update: manageProcedure
       .input(
         z.object({
-          id: z.string().uuid(),
+          id: z.string().min(1),
           investigationCarriedOut: z.string().optional(),
           outcome: z.string().optional(),
           actionsTaken: z.array(z.string()).optional(),
@@ -482,7 +482,7 @@ export const complianceRouter = router({
         z.object({
           dateReceived: z.string(), // "YYYY-MM-DD"
           fromName: z.string().min(1),
-          serviceUserId: z.string().uuid().optional(),
+          serviceUserId: z.string().min(1).optional(),
           complimentText: z.string().optional(),
           sharedWithStaff: z.boolean().optional(),
         })
@@ -543,7 +543,7 @@ export const complianceRouter = router({
       }),
 
     getById: manageProcedure
-      .input(z.object({ id: z.string().uuid() }))
+      .input(z.object({ id: z.string().min(1) }))
       .query(async ({ ctx, input }) => {
         const { organisationId } = ctx.user as { organisationId: string };
         const audit = await ctx.prisma.qualityAudit.findUnique({
@@ -595,7 +595,7 @@ export const complianceRouter = router({
     update: manageProcedure
       .input(
         z.object({
-          id: z.string().uuid(),
+          id: z.string().min(1),
           findings: z.array(findingSchema).optional(),
           issues: z.string().optional(),
           recommendations: z.string().optional(),
@@ -665,7 +665,7 @@ export const complianceRouter = router({
         z.object({
           surveyDate: z.string(),
           surveyType: z.nativeEnum(SurveyType),
-          serviceUserId: z.string().uuid().optional(),
+          serviceUserId: z.string().min(1).optional(),
           overallRating: z.string().optional(), // parse to int in handler
           comments: z.string().optional(),
           actionsFromFeedback: z.string().optional(),
@@ -742,7 +742,7 @@ export const complianceRouter = router({
     }),
 
     getById: protectedProcedure
-      .input(z.object({ id: z.string().uuid() }))
+      .input(z.object({ id: z.string().min(1) }))
       .query(async ({ ctx, input }) => {
         const { organisationId } = ctx.user as { organisationId: string };
         const inspection =
@@ -797,13 +797,13 @@ export const complianceRouter = router({
     update: manageProcedure
       .input(
         z.object({
-          id: z.string().uuid(),
+          id: z.string().min(1),
           inspectorName: z.string().optional(),
           grades: z.record(z.string(), z.number().min(1).max(6)).optional(),
           reportSummary: z.string().optional(),
           requirements: z.array(requirementSchema).optional(),
           recommendations: z.array(requirementSchema).optional(),
-          actionPlanId: z.string().uuid().optional(),
+          actionPlanId: z.string().min(1).optional(),
         })
       )
       .mutation(async ({ ctx, input }) => {
@@ -871,7 +871,7 @@ export const complianceRouter = router({
     update: manageProcedure
       .input(
         z.object({
-          id: z.string().uuid(),
+          id: z.string().min(1),
           selfEvaluation: z.string().optional(),
           complaintsSummary: z.string().optional(),
           incidentsSummary: z.string().optional(),
@@ -1615,7 +1615,7 @@ export const complianceRouter = router({
         dateReceived: z.date(),
         complainantName: z.string().min(1),
         complainantRelationship: z.string().optional(),
-        serviceUserId: z.string().uuid().optional(),
+        serviceUserId: z.string().min(1).optional(),
         natureOfComplaint: z.string().optional(),
       })
     )

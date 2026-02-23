@@ -40,7 +40,7 @@ export const medicationRouter = router({
   listForClient: medReadProcedure
     .input(
       z.object({
-        serviceUserId: z.string().uuid(),
+        serviceUserId: z.string().min(1),
         status: z.nativeEnum(MedicationStatus).optional(),
       })
     )
@@ -59,7 +59,7 @@ export const medicationRouter = router({
   addMedication: medAdminProcedure
     .input(
       z.object({
-        serviceUserId: z.string().uuid(),
+        serviceUserId: z.string().min(1),
         medicationName: z.string().min(1),
         form: z.string().optional(),
         dose: z.string().optional(),
@@ -98,7 +98,7 @@ export const medicationRouter = router({
   update: medAdminProcedure
     .input(
       z.object({
-        id: z.string().uuid(),
+        id: z.string().min(1),
         medicationName: z.string().min(1).optional(),
         form: z.string().optional(),
         dose: z.string().optional(),
@@ -134,7 +134,7 @@ export const medicationRouter = router({
   discontinue: medAdminProcedure
     .input(
       z.object({
-        id: z.string().uuid(),
+        id: z.string().min(1),
         discontinuedReason: z.string().optional(),
         endDate: z.string().optional(), // "YYYY-MM-DD"
       })
@@ -160,7 +160,7 @@ export const medicationRouter = router({
   getMarByMonth: medReadProcedure
     .input(
       z.object({
-        serviceUserId: z.string().uuid(),
+        serviceUserId: z.string().min(1),
         year: z.number().int().min(2020).max(2100),
         month: z.number().int().min(1).max(12),
       })
@@ -203,8 +203,8 @@ export const medicationRouter = router({
   marRecord: medAdminProcedure
     .input(
       z.object({
-        serviceUserId: z.string().uuid(),
-        medicationId: z.string().uuid(),
+        serviceUserId: z.string().min(1),
+        medicationId: z.string().min(1),
         scheduledDate: z.string(), // "YYYY-MM-DD"
         scheduledTime: z.string(), // "HH:MM"
         administered: z.boolean(),
@@ -215,7 +215,7 @@ export const medicationRouter = router({
         notAvailableReason: z.string().optional(),
         prnReasonGiven: z.string().optional(),
         outcomeNotes: z.string().optional(),
-        witnessId: z.string().uuid().optional(),
+        witnessId: z.string().min(1).optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -291,7 +291,7 @@ export const medicationRouter = router({
   getMarChart: medReadProcedure
     .input(
       z.object({
-        serviceUserId: z.string().uuid(),
+        serviceUserId: z.string().min(1),
         date: z.date(),
       })
     )
@@ -326,7 +326,7 @@ export const medicationRouter = router({
     report: protectedProcedure
       .input(
         z.object({
-          serviceUserId: z.string().uuid().optional(),
+          serviceUserId: z.string().min(1).optional(),
           errorDate: z.string(), // "YYYY-MM-DD"
           errorType: z.nativeEnum(MedicationErrorType),
           nccMerpCategory: z.nativeEnum(NccMerpCategory).optional(),
@@ -405,7 +405,7 @@ export const medicationRouter = router({
     update: medManageProcedure
       .input(
         z.object({
-          id: z.string().uuid(),
+          id: z.string().min(1),
           investigationOutcome: z.string().optional(),
           careInspectorateNotified: z.boolean().optional(),
           notificationDate: z.string().optional(), // "YYYY-MM-DD"
@@ -438,7 +438,7 @@ export const medicationRouter = router({
         z.object({
           page: z.number().int().min(1).default(1),
           limit: z.number().int().min(1).max(100).default(20),
-          serviceUserId: z.string().uuid().optional(),
+          serviceUserId: z.string().min(1).optional(),
           nccMerpCategory: z.nativeEnum(NccMerpCategory).optional(),
         })
       )
@@ -480,7 +480,7 @@ export const medicationRouter = router({
      * All errors for a specific service user.
      */
     getByServiceUser: medReadProcedure
-      .input(z.object({ serviceUserId: z.string().uuid() }))
+      .input(z.object({ serviceUserId: z.string().min(1) }))
       .query(async ({ ctx, input }) => {
         const { organisationId } = ctx.user as { organisationId: string };
         return ctx.prisma.medicationError.findMany({
@@ -501,7 +501,7 @@ export const medicationRouter = router({
      * Get a single error by id.
      */
     getById: medReadProcedure
-      .input(z.object({ id: z.string().uuid() }))
+      .input(z.object({ id: z.string().min(1) }))
       .query(async ({ ctx, input }) => {
         const { organisationId } = ctx.user as { organisationId: string };
         const error = await ctx.prisma.medicationError.findUnique({
@@ -533,7 +533,7 @@ export const medicationRouter = router({
       .input(
         z.object({
           auditDate: z.string(), // "YYYY-MM-DD"
-          auditorId: z.string().uuid().optional(),
+          auditorId: z.string().min(1).optional(),
           auditFindings: z.array(auditFindingSchema).optional(),
           issuesIdentified: z.string().optional(),
           actionsRequired: z.array(actionItemSchema).optional(),
@@ -566,7 +566,7 @@ export const medicationRouter = router({
     update: auditsManageProcedure
       .input(
         z.object({
-          id: z.string().uuid(),
+          id: z.string().min(1),
           auditFindings: z.array(auditFindingSchema).optional(),
           issuesIdentified: z.string().optional(),
           actionsRequired: z.array(actionItemSchema).optional(),
@@ -630,7 +630,7 @@ export const medicationRouter = router({
      * Get a single audit by id.
      */
     getById: auditsManageProcedure
-      .input(z.object({ id: z.string().uuid() }))
+      .input(z.object({ id: z.string().min(1) }))
       .query(async ({ ctx, input }) => {
         const { organisationId } = ctx.user as { organisationId: string };
         const audit = await ctx.prisma.medicationAudit.findUnique({

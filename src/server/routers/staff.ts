@@ -70,7 +70,7 @@ export const staffRouter = router({
     }),
 
   getById: protectedProcedure
-    .input(z.object({ id: z.string().uuid() }))
+    .input(z.object({ id: z.string().min(1) }))
     .query(async ({ ctx, input }) => {
       const { organisationId } = ctx.user as { organisationId: string };
       return ctx.prisma.staffMember.findUniqueOrThrow({
@@ -91,7 +91,7 @@ export const staffRouter = router({
     }),
 
   getRecruitmentStatus: protectedProcedure
-    .input(z.object({ id: z.string().uuid() }))
+    .input(z.object({ id: z.string().min(1) }))
     .query(async ({ ctx, input }) => {
       const { organisationId } = ctx.user as { organisationId: string };
       const today = new Date();
@@ -189,7 +189,7 @@ export const staffRouter = router({
   update: protectedProcedure
     .input(
       z.object({
-        id: z.string().uuid(),
+        id: z.string().min(1),
         firstName: z.string().min(1).optional(),
         lastName: z.string().min(1).optional(),
         dateOfBirth: z.date().optional(),
@@ -224,7 +224,7 @@ export const staffRouter = router({
   updateStatus: protectedProcedure
     .input(
       z.object({
-        id: z.string().uuid(),
+        id: z.string().min(1),
         status: z.nativeEnum(StaffStatus),
         endDate: z.date().optional(),
       })
@@ -245,7 +245,7 @@ export const staffRouter = router({
   addTraining: protectedProcedure
     .input(
       z.object({
-        staffMemberId: z.string().uuid(),
+        staffMemberId: z.string().min(1),
         trainingType: z.string(),
         trainingName: z.string().min(1),
         trainingProvider: z.string().optional(),
@@ -274,9 +274,9 @@ export const staffRouter = router({
   addSupervision: protectedProcedure
     .input(
       z.object({
-        staffMemberId: z.string().uuid(),
+        staffMemberId: z.string().min(1),
         supervisionDate: z.date(),
-        supervisorId: z.string().uuid().optional(),
+        supervisorId: z.string().min(1).optional(),
         supervisionType: z.enum(["INDIVIDUAL", "GROUP", "SPOT_CHECK", "OBSERVATION"]),
         discussionNotes: z.string().optional(),
         agreedActions: z.array(z.object({
@@ -300,7 +300,7 @@ export const staffRouter = router({
   // ── PVG Records ───────────────────────────
   pvg: router({
     getByStaff: staffReadProcedure
-      .input(z.object({ staffMemberId: z.string().uuid() }))
+      .input(z.object({ staffMemberId: z.string().min(1) }))
       .query(async ({ ctx, input }) => {
         const { organisationId } = ctx.user as { organisationId: string };
         return ctx.prisma.staffPvgRecord.findMany({
@@ -312,7 +312,7 @@ export const staffRouter = router({
     create: staffManageProcedure
       .input(
         z.object({
-          staffMemberId: z.string().uuid(),
+          staffMemberId: z.string().min(1),
           pvgMembershipNumber: z.string().optional(),
           pvgSchemeRecordDate: z.date().optional(),
           pvgUpdateService: z.boolean().optional(),
@@ -332,7 +332,7 @@ export const staffRouter = router({
     update: staffManageProcedure
       .input(
         z.object({
-          id: z.string().uuid(),
+          id: z.string().min(1),
           pvgMembershipNumber: z.string().optional(),
           pvgSchemeRecordDate: z.date().optional(),
           pvgUpdateService: z.boolean().optional(),
@@ -362,7 +362,7 @@ export const staffRouter = router({
   // ── Registrations ─────────────────────────
   registration: router({
     getByStaff: staffReadProcedure
-      .input(z.object({ staffMemberId: z.string().uuid() }))
+      .input(z.object({ staffMemberId: z.string().min(1) }))
       .query(async ({ ctx, input }) => {
         const { organisationId } = ctx.user as { organisationId: string };
         return ctx.prisma.staffRegistration.findMany({
@@ -374,7 +374,7 @@ export const staffRouter = router({
     create: staffManageProcedure
       .input(
         z.object({
-          staffMemberId: z.string().uuid(),
+          staffMemberId: z.string().min(1),
           registrationType: z.nativeEnum(RegistrationType),
           registrationNumber: z.string().optional(),
           registrationCategory: z.string().optional(),
@@ -392,7 +392,7 @@ export const staffRouter = router({
     update: staffManageProcedure
       .input(
         z.object({
-          id: z.string().uuid(),
+          id: z.string().min(1),
           registrationType: z.nativeEnum(RegistrationType).optional(),
           registrationNumber: z.string().optional(),
           registrationCategory: z.string().optional(),
@@ -420,7 +420,7 @@ export const staffRouter = router({
   // ── References ────────────────────────────
   reference: router({
     getByStaff: staffReadProcedure
-      .input(z.object({ staffMemberId: z.string().uuid() }))
+      .input(z.object({ staffMemberId: z.string().min(1) }))
       .query(async ({ ctx, input }) => {
         const { organisationId } = ctx.user as { organisationId: string };
         return ctx.prisma.staffReference.findMany({
@@ -432,7 +432,7 @@ export const staffRouter = router({
     create: staffManageProcedure
       .input(
         z.object({
-          staffMemberId: z.string().uuid(),
+          staffMemberId: z.string().min(1),
           refereeName: z.string().min(1),
           refereeOrganisation: z.string().optional(),
           refereeRole: z.string().optional(),
@@ -453,7 +453,7 @@ export const staffRouter = router({
     update: staffManageProcedure
       .input(
         z.object({
-          id: z.string().uuid(),
+          id: z.string().min(1),
           refereeName: z.string().min(1).optional(),
           refereeOrganisation: z.string().optional(),
           refereeRole: z.string().optional(),
@@ -461,7 +461,7 @@ export const staffRouter = router({
           referenceType: z.nativeEnum(ReferenceType).optional(),
           referenceReceived: z.boolean().optional(),
           referenceDate: z.date().optional(),
-          referenceVerifiedBy: z.string().uuid().optional(),
+          referenceVerifiedBy: z.string().min(1).optional(),
           employmentGapExplanation: z.string().optional(),
         })
       )
@@ -485,7 +485,7 @@ export const staffRouter = router({
   // ── Health Declarations ───────────────────
   health: router({
     getByStaff: staffReadProcedure
-      .input(z.object({ staffMemberId: z.string().uuid() }))
+      .input(z.object({ staffMemberId: z.string().min(1) }))
       .query(async ({ ctx, input }) => {
         const { organisationId } = ctx.user as { organisationId: string };
         return ctx.prisma.staffHealthDeclaration.findMany({
@@ -497,7 +497,7 @@ export const staffRouter = router({
     create: staffManageProcedure
       .input(
         z.object({
-          staffMemberId: z.string().uuid(),
+          staffMemberId: z.string().min(1),
           declarationDate: z.date(),
           fitToWork: z.boolean(),
           ohAssessmentRequired: z.boolean().optional(),
@@ -523,7 +523,7 @@ export const staffRouter = router({
     update: staffManageProcedure
       .input(
         z.object({
-          id: z.string().uuid(),
+          id: z.string().min(1),
           declarationDate: z.date().optional(),
           fitToWork: z.boolean().optional(),
           ohAssessmentRequired: z.boolean().optional(),
@@ -559,7 +559,7 @@ export const staffRouter = router({
   // ── Training Records ──────────────────────
   training: router({
     getByStaff: staffReadProcedure
-      .input(z.object({ staffMemberId: z.string().uuid() }))
+      .input(z.object({ staffMemberId: z.string().min(1) }))
       .query(async ({ ctx, input }) => {
         const { organisationId } = ctx.user as { organisationId: string };
         const staff = await ctx.prisma.staffMember.findUniqueOrThrow({
@@ -576,7 +576,7 @@ export const staffRouter = router({
     create: staffManageProcedure
       .input(
         z.object({
-          staffMemberId: z.string().uuid(),
+          staffMemberId: z.string().min(1),
           trainingType: z.nativeEnum(TrainingType),
           trainingName: z.string().min(1),
           trainingProvider: z.string().optional(),
@@ -595,7 +595,7 @@ export const staffRouter = router({
     update: staffManageProcedure
       .input(
         z.object({
-          id: z.string().uuid(),
+          id: z.string().min(1),
           trainingType: z.nativeEnum(TrainingType).optional(),
           trainingName: z.string().min(1).optional(),
           trainingProvider: z.string().optional(),
@@ -774,7 +774,7 @@ export const staffRouter = router({
   // ── Supervision ───────────────────────────
   supervision: router({
     getByStaff: staffReadProcedure
-      .input(z.object({ staffMemberId: z.string().uuid() }))
+      .input(z.object({ staffMemberId: z.string().min(1) }))
       .query(async ({ ctx, input }) => {
         const { organisationId } = ctx.user as { organisationId: string };
         return ctx.prisma.staffSupervision.findMany({
@@ -789,9 +789,9 @@ export const staffRouter = router({
     create: staffManageProcedure
       .input(
         z.object({
-          staffMemberId: z.string().uuid(),
+          staffMemberId: z.string().min(1),
           supervisionDate: z.date(),
-          supervisorId: z.string().uuid().optional(),
+          supervisorId: z.string().min(1).optional(),
           supervisionType: z.nativeEnum(SupervisionType),
           discussionNotes: z.string().optional(),
           agreedActions: z
@@ -816,9 +816,9 @@ export const staffRouter = router({
     update: staffManageProcedure
       .input(
         z.object({
-          id: z.string().uuid(),
+          id: z.string().min(1),
           supervisionDate: z.date().optional(),
-          supervisorId: z.string().uuid().optional(),
+          supervisorId: z.string().min(1).optional(),
           supervisionType: z.nativeEnum(SupervisionType).optional(),
           discussionNotes: z.string().optional(),
           agreedActions: z
@@ -845,7 +845,7 @@ export const staffRouter = router({
   // ── Appraisals ────────────────────────────
   appraisal: router({
     getByStaff: staffReadProcedure
-      .input(z.object({ staffMemberId: z.string().uuid() }))
+      .input(z.object({ staffMemberId: z.string().min(1) }))
       .query(async ({ ctx, input }) => {
         const { organisationId } = ctx.user as { organisationId: string };
         return ctx.prisma.staffAppraisal.findMany({
@@ -860,9 +860,9 @@ export const staffRouter = router({
     create: staffManageProcedure
       .input(
         z.object({
-          staffMemberId: z.string().uuid(),
+          staffMemberId: z.string().min(1),
           appraisalDate: z.date(),
-          appraiserId: z.string().uuid().optional(),
+          appraiserId: z.string().min(1).optional(),
           performanceSummary: z.string().optional(),
           developmentPlan: z.string().optional(),
           goals: z
@@ -897,9 +897,9 @@ export const staffRouter = router({
     update: staffManageProcedure
       .input(
         z.object({
-          id: z.string().uuid(),
+          id: z.string().min(1),
           appraisalDate: z.date().optional(),
-          appraiserId: z.string().uuid().optional(),
+          appraiserId: z.string().min(1).optional(),
           performanceSummary: z.string().optional(),
           developmentPlan: z.string().optional(),
           goals: z
@@ -930,7 +930,7 @@ export const staffRouter = router({
   // ── Absence ───────────────────────────────
   absence: router({
     getByStaff: staffReadProcedure
-      .input(z.object({ staffMemberId: z.string().uuid() }))
+      .input(z.object({ staffMemberId: z.string().min(1) }))
       .query(async ({ ctx, input }) => {
         const { organisationId } = ctx.user as { organisationId: string };
         return ctx.prisma.staffAbsenceRecord.findMany({
@@ -940,7 +940,7 @@ export const staffRouter = router({
       }),
 
     getSummary: staffReadProcedure
-      .input(z.object({ staffMemberId: z.string().uuid() }))
+      .input(z.object({ staffMemberId: z.string().min(1) }))
       .query(async ({ ctx, input }) => {
         const { organisationId } = ctx.user as { organisationId: string };
         const absences = await ctx.prisma.staffAbsenceRecord.findMany({
@@ -972,7 +972,7 @@ export const staffRouter = router({
     create: staffManageProcedure
       .input(
         z.object({
-          staffMemberId: z.string().uuid(),
+          staffMemberId: z.string().min(1),
           absenceType: z.nativeEnum(AbsenceType),
           startDate: z.date(),
           endDate: z.date().optional(),
@@ -993,7 +993,7 @@ export const staffRouter = router({
     update: staffManageProcedure
       .input(
         z.object({
-          id: z.string().uuid(),
+          id: z.string().min(1),
           absenceType: z.nativeEnum(AbsenceType).optional(),
           startDate: z.date().optional(),
           endDate: z.date().optional(),
@@ -1013,11 +1013,76 @@ export const staffRouter = router({
       }),
   }),
 
+  // ── Induction ───────────────────────────────
+  induction: router({
+    getByStaff: staffReadProcedure
+      .input(z.object({ staffMemberId: z.string().min(1) }))
+      .query(async ({ ctx, input }) => {
+        const { organisationId } = ctx.user as { organisationId: string };
+        return ctx.prisma.staffInduction.findUnique({
+          where: { staffMemberId: input.staffMemberId },
+          include: { mentor: { select: { id: true, firstName: true, lastName: true } } },
+        }).then((rec) => {
+          if (rec && rec.organisationId !== organisationId) return null;
+          return rec;
+        });
+      }),
+
+    create: staffManageProcedure
+      .input(
+        z.object({
+          staffMemberId: z.string().min(1),
+          inductionStarted: z.date().optional(),
+          inductionCompleted: z.date().optional(),
+          mentorId: z.string().min(1).optional(),
+          shadowShiftsCompleted: z.number().int().min(0).optional(),
+          competencyAssessments: z
+            .array(z.object({ area: z.string(), date: z.string(), passed: z.boolean() }))
+            .optional(),
+          checklistItems: z
+            .array(z.object({ item: z.string(), completed: z.boolean(), date: z.string().optional() }))
+            .optional(),
+          probationReviewNotes: z.string().optional(),
+        })
+      )
+      .mutation(async ({ ctx, input }) => {
+        const { organisationId, id: userId } = ctx.user as { organisationId: string; id: string };
+        return ctx.prisma.staffInduction.create({
+          data: { ...input, organisationId, createdBy: userId, updatedBy: userId },
+        });
+      }),
+
+    update: staffManageProcedure
+      .input(
+        z.object({
+          id: z.string().min(1),
+          inductionStarted: z.date().optional(),
+          inductionCompleted: z.date().optional(),
+          mentorId: z.string().min(1).nullable().optional(),
+          shadowShiftsCompleted: z.number().int().min(0).optional(),
+          competencyAssessments: z
+            .array(z.object({ area: z.string(), date: z.string(), passed: z.boolean() }))
+            .optional(),
+          checklistItems: z
+            .array(z.object({ item: z.string(), completed: z.boolean(), date: z.string().optional() }))
+            .optional(),
+          probationReviewNotes: z.string().optional(),
+        })
+      )
+      .mutation(async ({ ctx, input }) => {
+        const { organisationId, id: userId } = ctx.user as { organisationId: string; id: string };
+        const { id, ...data } = input;
+        const rec = await ctx.prisma.staffInduction.findUniqueOrThrow({ where: { id }, select: { organisationId: true } });
+        if (rec.organisationId !== organisationId) throw new TRPCError({ code: "FORBIDDEN" });
+        return ctx.prisma.staffInduction.update({ where: { id }, data: { ...data, updatedBy: userId } });
+      }),
+  }),
+
   // ── Disciplinary ──────────────────────────
   disciplinary: router({
     getByStaff: protectedProcedure
       .use(requirePermission("staff.manage"))
-      .input(z.object({ staffMemberId: z.string().uuid() }))
+      .input(z.object({ staffMemberId: z.string().min(1) }))
       .query(async ({ ctx, input }) => {
         const { organisationId } = ctx.user as { organisationId: string };
         return ctx.prisma.staffDisciplinaryRecord.findMany({
@@ -1030,7 +1095,7 @@ export const staffRouter = router({
       .use(requirePermission("staff.manage"))
       .input(
         z.object({
-          staffMemberId: z.string().uuid(),
+          staffMemberId: z.string().min(1),
           recordType: z.nativeEnum(DisciplinaryRecordType),
           dateRaised: z.date(),
           description: z.string().optional(),
@@ -1051,7 +1116,7 @@ export const staffRouter = router({
       .use(requirePermission("staff.manage"))
       .input(
         z.object({
-          id: z.string().uuid(),
+          id: z.string().min(1),
           recordType: z.nativeEnum(DisciplinaryRecordType).optional(),
           dateRaised: z.date().optional(),
           description: z.string().optional(),
@@ -1073,7 +1138,7 @@ export const staffRouter = router({
   // ── Leaving ───────────────────────────────
   leaving: router({
     getByStaff: staffReadProcedure
-      .input(z.object({ staffMemberId: z.string().uuid() }))
+      .input(z.object({ staffMemberId: z.string().min(1) }))
       .query(async ({ ctx, input }) => {
         const { organisationId } = ctx.user as { organisationId: string };
         return ctx.prisma.staffLeaving.findFirst({
@@ -1084,7 +1149,7 @@ export const staffRouter = router({
     create: staffManageProcedure
       .input(
         z.object({
-          staffMemberId: z.string().uuid(),
+          staffMemberId: z.string().min(1),
           leavingDate: z.date(),
           reason: z.nativeEnum(LeavingReason),
           exitInterviewNotes: z.string().optional(),
@@ -1126,7 +1191,7 @@ export const staffRouter = router({
     update: staffManageProcedure
       .input(
         z.object({
-          id: z.string().uuid(),
+          id: z.string().min(1),
           leavingDate: z.date().optional(),
           reason: z.nativeEnum(LeavingReason).optional(),
           exitInterviewNotes: z.string().optional(),

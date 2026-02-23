@@ -6,12 +6,14 @@ import { cn } from "@/lib/utils";
 
 const TABS = [
   { label: "Overview", suffix: "" },
+  { label: "Induction", suffix: "/induction" },
   { label: "PVG & Registration", suffix: "/pvg" },
   { label: "Training", suffix: "/training" },
   { label: "Supervision", suffix: "/supervision" },
   { label: "Appraisals", suffix: "/appraisals" },
   { label: "Absence", suffix: "/absence" },
   { label: "Health", suffix: "/health" },
+  { label: "Disciplinary", suffix: "/disciplinary" },
   { label: "Leaving", suffix: "/leaving" },
   { label: "Documents", suffix: "/documents" },
 ];

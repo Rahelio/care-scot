@@ -13,7 +13,7 @@ export const rotaRouter = router({
   getStaffSchedule: protectedProcedure
     .input(
       z.object({
-        staffId: z.string().uuid(),
+        staffId: z.string().min(1),
         from: z.date(),
         to: z.date(),
       })
@@ -39,7 +39,7 @@ export const rotaRouter = router({
   getServiceUserVisits: protectedProcedure
     .input(
       z.object({
-        serviceUserId: z.string().uuid(),
+        serviceUserId: z.string().min(1),
         from: z.date(),
         to: z.date(),
       })
@@ -112,8 +112,8 @@ export const rotaRouter = router({
   assignStaffToShift: protectedProcedure
     .input(
       z.object({
-        shiftId: z.string().uuid(),
-        staffId: z.string().uuid(),
+        shiftId: z.string().min(1),
+        staffId: z.string().min(1),
       })
     )
     .mutation(async ({ ctx, input }) => {

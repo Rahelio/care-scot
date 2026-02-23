@@ -60,7 +60,7 @@ export const filesRouter = router({
         mimeType: z.string().min(1),
         dataBase64: z.string().min(1),
         entityType: z.string().optional(),
-        entityId: z.string().uuid().optional(),
+        entityId: z.string().min(1).optional(),
       }),
     )
     .mutation(async ({ ctx, input }) => {
@@ -111,7 +111,7 @@ export const filesRouter = router({
    * Download a file by ID. Returns base64-encoded content and metadata.
    */
   download: protectedProcedure
-    .input(z.object({ id: z.string().uuid() }))
+    .input(z.object({ id: z.string().min(1) }))
     .query(async ({ ctx, input }) => {
       const { organisationId } = ctx.user as { organisationId: string };
 
@@ -138,7 +138,7 @@ export const filesRouter = router({
    * Soft-delete a file (sets isDeleted = true, keeps the physical file).
    */
   delete: protectedProcedure
-    .input(z.object({ id: z.string().uuid() }))
+    .input(z.object({ id: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {
       const { organisationId } = ctx.user as { organisationId: string };
 
@@ -164,7 +164,7 @@ export const filesRouter = router({
     .input(
       z.object({
         entityType: z.string(),
-        entityId: z.string().uuid(),
+        entityId: z.string().min(1),
       }),
     )
     .query(async ({ ctx, input }) => {

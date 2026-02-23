@@ -12,7 +12,8 @@
     "db:migrate:prod": "prisma migrate deploy",
     "db:studio": "prisma studio",
     "db:seed": "tsx scripts/seed.ts",
-    "db:reset": "prisma migrate reset --force && tsx scripts/seed.ts"
+    "db:reset": "prisma migrate reset --force && tsx scripts/seed.ts",
+    "db:setup-prod": "tsx scripts/setup-production.ts"
   },
   "prisma": {
     "seed": "tsx scripts/seed.ts"

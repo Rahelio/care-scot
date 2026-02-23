@@ -124,7 +124,7 @@ const usersRouter = router({
         email: z.string().email("Invalid email address"),
         name: z.string().optional(),
         role: z.nativeEnum(UserRole),
-        staffMemberId: z.string().uuid().optional(),
+        staffMemberId: z.string().min(1).optional(),
         tempPassword: z.string().min(8, "Password must be at least 8 characters"),
       }),
     )
@@ -185,7 +185,7 @@ const usersRouter = router({
   updateRole: usersMgmtProcedure
     .input(
       z.object({
-        userId: z.string().uuid(),
+        userId: z.string().min(1),
         role: z.nativeEnum(UserRole),
       }),
     )
@@ -210,7 +210,7 @@ const usersRouter = router({
     }),
 
   deactivate: usersMgmtProcedure
-    .input(z.object({ userId: z.string().uuid() }))
+    .input(z.object({ userId: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {
       const { organisationId, id: currentUserId } = ctx.user as {
         organisationId: string;
@@ -232,7 +232,7 @@ const usersRouter = router({
     }),
 
   reactivate: usersMgmtProcedure
-    .input(z.object({ userId: z.string().uuid() }))
+    .input(z.object({ userId: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {
       const { organisationId } = ctx.user as { organisationId: string };
 
@@ -246,8 +246,8 @@ const usersRouter = router({
   linkStaffMember: usersMgmtProcedure
     .input(
       z.object({
-        userId: z.string().uuid(),
-        staffMemberId: z.string().uuid().nullable(),
+        userId: z.string().min(1),
+        staffMemberId: z.string().min(1).nullable(),
       }),
     )
     .mutation(async ({ ctx, input }) => {

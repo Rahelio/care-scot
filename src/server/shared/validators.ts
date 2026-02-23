@@ -10,7 +10,7 @@ export const dateRangeSchema = z.object({
   to: z.date().optional(),
 });
 
-export const uuidSchema = z.string().uuid();
+export const uuidSchema = z.string().min(1);
 
 export const addressSchema = z.object({
   addressLine1: z.string().optional(),
