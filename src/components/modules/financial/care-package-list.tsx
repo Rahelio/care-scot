@@ -54,7 +54,6 @@ export function CarePackageList({ serviceUserId }: Props) {
   const [billingTimeBasis, setBillingTimeBasis] = useState("SCHEDULED");
   const [roundingIncrement, setRoundingIncrement] = useState("15");
   const [minimumBillable, setMinimumBillable] = useState("15");
-  const [carersRequired, setCarersRequired] = useState("1");
   const [mileageBillable, setMileageBillable] = useState(false);
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
@@ -107,7 +106,6 @@ export function CarePackageList({ serviceUserId }: Props) {
     setBillingTimeBasis("SCHEDULED");
     setRoundingIncrement("15");
     setMinimumBillable("15");
-    setCarersRequired("1");
     setMileageBillable(false);
     setStartDate("");
     setEndDate("");
@@ -123,7 +121,6 @@ export function CarePackageList({ serviceUserId }: Props) {
     setBillingTimeBasis(pkg.billingTimeBasis);
     setRoundingIncrement(String(pkg.roundingIncrementMinutes));
     setMinimumBillable(String(pkg.minimumBillableMinutes));
-    setCarersRequired(String(pkg.carersRequired));
     setMileageBillable(pkg.mileageBillable);
     setStartDate(new Date(pkg.startDate).toISOString().split("T")[0]);
     setEndDate(
@@ -144,7 +141,6 @@ export function CarePackageList({ serviceUserId }: Props) {
       billingTimeBasis: billingTimeBasis as "SCHEDULED" | "ACTUAL",
       roundingIncrementMinutes: parseInt(roundingIncrement),
       minimumBillableMinutes: parseInt(minimumBillable),
-      carersRequired: parseInt(carersRequired),
       mileageBillable,
       startDate,
       endDate: endDate || null,
@@ -234,10 +230,6 @@ export function CarePackageList({ serviceUserId }: Props) {
                     {pkg.minimumBillableMinutes}min
                   </div>
                   <div>
-                    <span className="text-muted-foreground">Carers:</span>{" "}
-                    {pkg.carersRequired}
-                  </div>
-                  <div>
                     <span className="text-muted-foreground">Start:</span>{" "}
                     {fmtDate.format(new Date(pkg.startDate))}
                   </div>
@@ -318,31 +310,20 @@ export function CarePackageList({ serviceUserId }: Props) {
                 placeholder="Optional reference number"
               />
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <Label>Billing Basis</Label>
-                <Select
-                  value={billingTimeBasis}
-                  onValueChange={setBillingTimeBasis}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="SCHEDULED">Scheduled</SelectItem>
-                    <SelectItem value="ACTUAL">Actual</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label>Carers Required</Label>
-                <Input
-                  type="number"
-                  min="1"
-                  value={carersRequired}
-                  onChange={(e) => setCarersRequired(e.target.value)}
-                />
-              </div>
+            <div>
+              <Label>Billing Basis</Label>
+              <Select
+                value={billingTimeBasis}
+                onValueChange={setBillingTimeBasis}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="SCHEDULED">Scheduled</SelectItem>
+                  <SelectItem value="ACTUAL">Actual</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>

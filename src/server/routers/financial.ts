@@ -488,7 +488,6 @@ const carePackagesRouter = router({
         billingTimeBasis: z.nativeEnum(BillingTimeBasis).default("SCHEDULED"),
         roundingIncrementMinutes: z.number().int().min(1).default(15),
         minimumBillableMinutes: z.number().int().min(0).default(15),
-        carersRequired: z.number().int().min(1).default(1),
         mileageBillable: z.boolean().default(false),
         startDate: z.string().min(1),
         endDate: z.string().nullable().optional(),
@@ -520,7 +519,6 @@ const carePackagesRouter = router({
         billingTimeBasis: z.nativeEnum(BillingTimeBasis).optional(),
         roundingIncrementMinutes: z.number().int().min(1).optional(),
         minimumBillableMinutes: z.number().int().min(0).optional(),
-        carersRequired: z.number().int().min(1).optional(),
         mileageBillable: z.boolean().optional(),
         startDate: z.string().optional(),
         endDate: z.string().nullable().optional(),
@@ -583,6 +581,13 @@ function formatTime(date: Date): string {
   return `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
 }
 
+const DOW_MAP: DayOfWeek[] = [
+  "SUNDAY", "MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY",
+];
+function getScheduleDayOfWeek(date: Date): DayOfWeek {
+  return DOW_MAP[date.getDay()];
+}
+
 const reconciliationRouter = router({
   generate: protectedProcedure
     .use(requirePermission("reports.view_all"))
@@ -636,12 +641,39 @@ const reconciliationRouter = router({
         ? visits.filter((v) => v.carePackage?.funderId === input.funderId)
         : visits;
 
+      // Fetch active visit schedules for all packages in this batch so we can
+      // resolve carersRequired per slot rather than using the package-level default.
+      const packageIds = [...new Set(filtered.map((v) => v.carePackageId!))];
+      const allSchedules = await ctx.db.visitSchedule.findMany({
+        where: { carePackageId: { in: packageIds }, isActive: true },
+      });
+      const schedulesByPackage = new Map<string, typeof allSchedules>();
+      for (const s of allSchedules) {
+        const list = schedulesByPackage.get(s.carePackageId) ?? [];
+        list.push(s);
+        schedulesByPackage.set(s.carePackageId, list);
+      }
+
       const created: string[] = [];
       const issues: { visitId: string; reason: string }[] = [];
 
       for (const visit of filtered) {
         const pkg = visit.carePackage!;
         const dayType = determineDayType(visit.visitDate, bhDates);
+
+        // Resolve carers from the matching VisitSchedule (scheduling is source of
+        // truth). Match on dayOfWeek + startTime; if no exact match, fall back to
+        // same-day schedule, then to the package-level default.
+        const visitDow = getScheduleDayOfWeek(visit.visitDate);
+        const pkgSchedules = schedulesByPackage.get(pkg.id) ?? [];
+        const matchedSchedule =
+          pkgSchedules.find(
+            (s) =>
+              s.dayOfWeek === visitDow &&
+              s.startTime === formatTime(visit.scheduledStart),
+          ) ?? pkgSchedules.find((s) => s.dayOfWeek === visitDow);
+        const carersRequired =
+          matchedSchedule?.carersRequired ?? pkg.carersRequired;
 
         // Determine billing start/end based on billing time basis
         const useActual = pkg.billingTimeBasis === "ACTUAL";
@@ -673,13 +705,13 @@ const reconciliationRouter = router({
           pkg.rateCard.lines,
           dayType,
           formatTime(billingStart),
-          pkg.carersRequired,
+          carersRequired,
         );
 
         if (!ratePerHour) {
           issues.push({
             visitId: visit.id,
-            reason: `No rate found for ${dayType}, ${formatTime(billingStart)}, ${pkg.carersRequired} carer(s)`,
+            reason: `No rate found for ${dayType}, ${formatTime(billingStart)}, ${carersRequired} carer(s)`,
           });
           continue;
         }
@@ -688,7 +720,7 @@ const reconciliationRouter = router({
         const hours = billingDurationMinutes / 60;
         const lineTotal = new Decimal(hours)
           .mul(ratePerHour)
-          .mul(pkg.carersRequired)
+          .mul(carersRequired)
           .toDecimalPlaces(2);
 
         // Calculate mileage
@@ -718,7 +750,7 @@ const reconciliationRouter = router({
             billingStart,
             billingEnd,
             billingDurationMinutes,
-            carersRequired: pkg.carersRequired,
+            carersRequired,
             dayType,
             appliedRatePerHour: ratePerHour,
             lineTotal,
