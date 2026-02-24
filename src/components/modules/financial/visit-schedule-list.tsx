@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { trpc } from "@/lib/trpc";
+import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -12,13 +13,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -77,7 +72,7 @@ const STATUS_VARIANT: Record<string, "default" | "secondary" | "outline"> = {
 
 function emptyForm() {
   return {
-    dayOfWeek: "",
+    days: [] as string[],
     startTime: "",
     endTime: "",
     carersRequired: "1",
@@ -103,20 +98,10 @@ export function VisitScheduleList({
     trpc.financial.visitSchedules.listByPackage.useQuery({ carePackageId });
 
   const createMut = trpc.financial.visitSchedules.create.useMutation({
-    onSuccess: () => {
-      utils.financial.visitSchedules.invalidate();
-      closeForm();
-      toast.success("Visit slot added");
-    },
     onError: (e) => toast.error(e.message),
   });
 
   const updateMut = trpc.financial.visitSchedules.update.useMutation({
-    onSuccess: () => {
-      utils.financial.visitSchedules.invalidate();
-      closeForm();
-      toast.success("Visit slot updated");
-    },
     onError: (e) => toast.error(e.message),
   });
 
@@ -137,7 +122,7 @@ export function VisitScheduleList({
   function openEdit(row: ScheduleRow) {
     setEditId(row.id);
     setForm({
-      dayOfWeek: row.dayOfWeek,
+      days: [row.dayOfWeek],
       startTime: row.startTime,
       endTime: row.endTime,
       carersRequired: String(row.carersRequired),
@@ -150,17 +135,20 @@ export function VisitScheduleList({
     setFormOpen(true);
   }
 
-  function handleSubmit() {
-    const payload = {
+  function toggleDay(day: string) {
+    setForm((f) => ({
+      ...f,
+      days: editId
+        ? [day]
+        : f.days.includes(day)
+          ? f.days.filter((d) => d !== day)
+          : [...f.days, day],
+    }));
+  }
+
+  async function handleSubmit() {
+    const base = {
       carePackageId,
-      dayOfWeek: form.dayOfWeek as
-        | "MONDAY"
-        | "TUESDAY"
-        | "WEDNESDAY"
-        | "THURSDAY"
-        | "FRIDAY"
-        | "SATURDAY"
-        | "SUNDAY",
       startTime: form.startTime,
       endTime: form.endTime,
       carersRequired: parseInt(form.carersRequired),
@@ -169,15 +157,54 @@ export function VisitScheduleList({
       notes: form.notes || undefined,
     };
 
-    if (editId) {
-      updateMut.mutate({ id: editId, ...payload });
-    } else {
-      createMut.mutate(payload);
+    try {
+      if (editId) {
+        await updateMut.mutateAsync({
+          id: editId,
+          dayOfWeek: form.days[0] as
+            | "MONDAY"
+            | "TUESDAY"
+            | "WEDNESDAY"
+            | "THURSDAY"
+            | "FRIDAY"
+            | "SATURDAY"
+            | "SUNDAY",
+          ...base,
+        });
+        utils.financial.visitSchedules.invalidate();
+        closeForm();
+        toast.success("Visit slot updated");
+      } else {
+        await Promise.all(
+          form.days.map((day) =>
+            createMut.mutateAsync({
+              ...base,
+              dayOfWeek: day as
+                | "MONDAY"
+                | "TUESDAY"
+                | "WEDNESDAY"
+                | "THURSDAY"
+                | "FRIDAY"
+                | "SATURDAY"
+                | "SUNDAY",
+            }),
+          ),
+        );
+        utils.financial.visitSchedules.invalidate();
+        closeForm();
+        toast.success(
+          form.days.length > 1
+            ? `${form.days.length} visit slots added`
+            : "Visit slot added",
+        );
+      }
+    } catch {
+      // onError callbacks handle the toast
     }
   }
 
   const isValid =
-    form.dayOfWeek &&
+    form.days.length > 0 &&
     form.startTime &&
     form.endTime &&
     form.effectiveFrom &&
@@ -310,22 +337,26 @@ export function VisitScheduleList({
 
           <div className="space-y-4">
             <div>
-              <Label>Day of week</Label>
-              <Select
-                value={form.dayOfWeek}
-                onValueChange={(v) => setForm((f) => ({ ...f, dayOfWeek: v }))}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select day" />
-                </SelectTrigger>
-                <SelectContent>
-                  {DAYS_OF_WEEK.map((d) => (
-                    <SelectItem key={d.value} value={d.value}>
-                      {d.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Label className="mb-2 block">
+                {editId ? "Day of week" : "Days of week"}
+              </Label>
+              <div className="grid grid-cols-2 gap-x-4 gap-y-2">
+                {DAYS_OF_WEEK.map((d) => (
+                  <label
+                    key={d.value}
+                    className={cn(
+                      "flex items-center gap-2 cursor-pointer select-none rounded px-1 py-0.5",
+                      "hover:bg-muted/60 transition-colors",
+                    )}
+                  >
+                    <Checkbox
+                      checked={form.days.includes(d.value)}
+                      onCheckedChange={() => toggleDay(d.value)}
+                    />
+                    <span className="text-sm">{d.label}</span>
+                  </label>
+                ))}
+              </div>
             </div>
 
             <div className="grid grid-cols-2 gap-3">
