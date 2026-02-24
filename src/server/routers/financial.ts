@@ -2,6 +2,7 @@ import { z } from "zod";
 import { router, protectedProcedure } from "../trpc";
 import { TRPCError } from "@trpc/server";
 import { requirePermission } from "../middleware/rbac";
+import { OrgScopedPrismaClient } from "../middleware/org-scope";
 import {
   FunderType,
   BillingTimeBasis,
@@ -1005,7 +1006,7 @@ const reconciliationRouter = router({
 // ─────────────────────────────────────────────
 
 async function generateInvoiceNumber(
-  db: typeof import("@prisma/client").PrismaClient.prototype,
+  db: OrgScopedPrismaClient,
   organisationId: string,
   prefix: string | null,
 ): Promise<string> {
@@ -1015,7 +1016,7 @@ async function generateInvoiceNumber(
   const pattern = `INV-${pfx}-${ym}-`;
 
   // Find the latest invoice number for this org+month
-  const latest = await (db as any).invoice.findFirst({
+  const latest = await db.invoice.findFirst({
     where: {
       organisationId,
       invoiceNumber: { startsWith: pattern },
@@ -1034,7 +1035,7 @@ async function generateInvoiceNumber(
 }
 
 async function generateCreditNoteNumber(
-  db: any,
+  db: OrgScopedPrismaClient,
   organisationId: string,
   prefix: string | null,
 ): Promise<string> {
@@ -1124,7 +1125,7 @@ const invoicesRouter = router({
       });
 
       const invoiceNumber = await generateInvoiceNumber(
-        ctx.db as any,
+        ctx.db,
         ctx.user.organisationId,
         org?.invoicePrefix ?? null,
       );
