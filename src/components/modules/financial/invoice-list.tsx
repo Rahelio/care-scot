@@ -144,12 +144,15 @@ export function InvoiceList() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <Select value={funderFilter} onValueChange={setFunderFilter}>
+          <Select
+            value={funderFilter || "ALL"}
+            onValueChange={(v) => setFunderFilter(v === "ALL" ? "" : v)}
+          >
             <SelectTrigger className="w-[200px]">
               <SelectValue placeholder="All funders" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="">All funders</SelectItem>
+              <SelectItem value="ALL">All funders</SelectItem>
               {funders.map((f) => (
                 <SelectItem key={f.id} value={f.id}>
                   {f.name}
@@ -157,12 +160,15 @@ export function InvoiceList() {
               ))}
             </SelectContent>
           </Select>
-          <Select value={statusFilter} onValueChange={setStatusFilter}>
+          <Select
+            value={statusFilter || "ALL"}
+            onValueChange={(v) => setStatusFilter(v === "ALL" ? "" : v)}
+          >
             <SelectTrigger className="w-[160px]">
               <SelectValue placeholder="All statuses" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="">All statuses</SelectItem>
+              <SelectItem value="ALL">All statuses</SelectItem>
               {Object.entries(STATUS_LABELS).map(([k, v]) => (
                 <SelectItem key={k} value={k}>
                   {v}

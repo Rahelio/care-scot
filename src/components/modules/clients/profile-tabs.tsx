@@ -13,6 +13,7 @@ const TABS = [
   { label: "Consent", suffix: "/consent" },
   { label: "Agreement", suffix: "/agreement" },
   { label: "Reviews", suffix: "/reviews" },
+  { label: "Visits", suffix: "/visits" },
   { label: "Financial", suffix: "/financial" },
 ];
 

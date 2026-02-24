@@ -8,6 +8,7 @@ import {
   BillingTimeBasis,
   InvoiceFrequency,
   DayType,
+  DayOfWeek,
   CarePackageStatus,
   BillableVisitStatus,
   InvoiceStatus,
@@ -1641,6 +1642,100 @@ const reportsRouter = router({
 });
 
 // ─────────────────────────────────────────────
+// Visit Schedules
+// ─────────────────────────────────────────────
+
+const visitSchedulesRouter = router({
+  listByPackage: protectedProcedure
+    .use(requirePermission("clients.read"))
+    .input(z.object({ carePackageId: z.string().min(1) }))
+    .query(async ({ ctx, input }) => {
+      return ctx.db.visitSchedule.findMany({
+        where: { carePackageId: input.carePackageId, isActive: true },
+        orderBy: [
+          { dayOfWeek: "asc" },
+          { startTime: "asc" },
+        ],
+      });
+    }),
+
+  create: protectedProcedure
+    .use(requirePermission("clients.update"))
+    .input(
+      z.object({
+        carePackageId: z.string().min(1),
+        dayOfWeek: z.nativeEnum(DayOfWeek),
+        startTime: z.string().regex(/^\d{2}:\d{2}$/),
+        endTime: z.string().regex(/^\d{2}:\d{2}$/),
+        carersRequired: z.number().int().min(1).default(1),
+        effectiveFrom: z.string(),
+        effectiveTo: z.string().nullable().optional(),
+        notes: z.string().optional(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const pkg = await ctx.db.carePackage.findFirstOrThrow({
+        where: { id: input.carePackageId },
+        select: { organisationId: true },
+      });
+      return ctx.db.visitSchedule.create({
+        data: {
+          organisationId: pkg.organisationId,
+          carePackageId: input.carePackageId,
+          dayOfWeek: input.dayOfWeek,
+          startTime: input.startTime,
+          endTime: input.endTime,
+          carersRequired: input.carersRequired,
+          effectiveFrom: new Date(input.effectiveFrom),
+          effectiveTo: input.effectiveTo ? new Date(input.effectiveTo) : null,
+          notes: input.notes,
+          createdBy: ctx.session.user.id,
+          updatedBy: ctx.session.user.id,
+        },
+      });
+    }),
+
+  update: protectedProcedure
+    .use(requirePermission("clients.update"))
+    .input(
+      z.object({
+        id: z.string().min(1),
+        dayOfWeek: z.nativeEnum(DayOfWeek).optional(),
+        startTime: z.string().regex(/^\d{2}:\d{2}$/).optional(),
+        endTime: z.string().regex(/^\d{2}:\d{2}$/).optional(),
+        carersRequired: z.number().int().min(1).optional(),
+        effectiveFrom: z.string().optional(),
+        effectiveTo: z.string().nullable().optional(),
+        notes: z.string().nullable().optional(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { id, effectiveFrom, effectiveTo, ...rest } = input;
+      return ctx.db.visitSchedule.update({
+        where: { id },
+        data: {
+          ...rest,
+          ...(effectiveFrom && { effectiveFrom: new Date(effectiveFrom) }),
+          ...(effectiveTo !== undefined && {
+            effectiveTo: effectiveTo ? new Date(effectiveTo) : null,
+          }),
+          updatedBy: ctx.session.user.id,
+        },
+      });
+    }),
+
+  delete: protectedProcedure
+    .use(requirePermission("clients.update"))
+    .input(z.object({ id: z.string().min(1) }))
+    .mutation(async ({ ctx, input }) => {
+      return ctx.db.visitSchedule.update({
+        where: { id: input.id },
+        data: { isActive: false, updatedBy: ctx.session.user.id },
+      });
+    }),
+});
+
+// ─────────────────────────────────────────────
 // Combined Financial Router
 // ─────────────────────────────────────────────
 
@@ -1653,4 +1748,5 @@ export const financialRouter = router({
   invoices: invoicesRouter,
   creditNotes: creditNotesRouter,
   reports: reportsRouter,
+  visitSchedules: visitSchedulesRouter,
 });

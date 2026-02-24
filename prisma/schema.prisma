@@ -394,6 +394,16 @@ enum DayType {
   BANK_HOLIDAY
 }
 
+enum DayOfWeek {
+  MONDAY
+  TUESDAY
+  WEDNESDAY
+  THURSDAY
+  FRIDAY
+  SATURDAY
+  SUNDAY
+}
+
 enum BillingTimeBasis {
   SCHEDULED
   ACTUAL
@@ -498,6 +508,7 @@ model Organisation {
   rateCards                    RateCard[]
   carePackages                 CarePackage[]
   billableVisits               BillableVisit[]
+  visitSchedules               VisitSchedule[]
   bankHolidays                 BankHoliday[]
   invoices                     Invoice[]
   creditNotes                  CreditNote[]
@@ -1796,6 +1807,7 @@ model CarePackage {
   careVisitRecords CareVisitRecord[]
   billableVisits  BillableVisit[]
   invoiceLines    InvoiceLine[]
+  visitSchedules  VisitSchedule[]
 
   @@map("care_packages")
 }
@@ -1842,6 +1854,29 @@ model BillableVisit {
   invoiceLine     InvoiceLine?    @relation(fields: [invoiceLineId], references: [id])
 
   @@map("billable_visits")
+}
+
+model VisitSchedule {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organisationId String    @map("organisation_id") @db.Uuid
+  carePackageId  String    @map("care_package_id") @db.Uuid
+  dayOfWeek      DayOfWeek @map("day_of_week")
+  startTime      String    @map("start_time")
+  endTime        String    @map("end_time")
+  carersRequired Int       @default(1) @map("carers_required")
+  effectiveFrom  DateTime  @map("effective_from") @db.Date
+  effectiveTo    DateTime? @map("effective_to") @db.Date
+  notes          String?   @db.Text
+  isActive       Boolean   @default(true) @map("is_active")
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt      DateTime  @updatedAt @map("updated_at") @db.Timestamptz()
+  createdBy      String?   @map("created_by") @db.Uuid
+  updatedBy      String?   @map("updated_by") @db.Uuid
+
+  organisation Organisation @relation(fields: [organisationId], references: [id])
+  carePackage  CarePackage  @relation(fields: [carePackageId], references: [id])
+
+  @@map("visit_schedules")
 }
 
 model BankHoliday {
