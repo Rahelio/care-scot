@@ -12,6 +12,7 @@
 
 # testing
 /coverage
+scripts/
 
 # next.js
 /.next/
@@ -42,3 +43,6 @@ next-env.d.ts
 
 # AI
 .claude
+
+# Local dev / demo scripts — not for production
+scripts/seed-demo.ts
