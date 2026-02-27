@@ -36,7 +36,7 @@ export const clientsRouter = router({
         }),
       };
 
-      const [items, total] = await Promise.all([
+      const [rawItems, total] = await Promise.all([
         ctx.prisma.serviceUser.findMany({
           where,
           skip,
@@ -52,10 +52,37 @@ export const clientsRouter = router({
             phonePrimary: true,
             status: true,
             createdAt: true,
+            _count: {
+              select: {
+                personalPlans: { where: { status: "ACTIVE" } },
+                consentRecords: true,
+                serviceAgreements: { where: { signedByServiceUser: true, signedByProvider: true } },
+              },
+            },
+            riskAssessments: {
+              where: { status: "ACTIVE" },
+              select: { assessmentType: true },
+            },
           },
         }),
         ctx.prisma.serviceUser.count({ where }),
       ]);
+
+      const items = rawItems.map(({ _count, riskAssessments, ...rest }) => {
+        const hasActivePlan = _count.personalPlans > 0;
+        const hasSignedAgreement = _count.serviceAgreements > 0;
+        const hasConsent = _count.consentRecords > 0;
+        const riskAssessmentCount = new Set(riskAssessments.map((r) => r.assessmentType)).size;
+        const score =
+          (hasActivePlan ? 1 : 0) +
+          (hasSignedAgreement ? 1 : 0) +
+          (hasConsent ? 1 : 0) +
+          (riskAssessmentCount === 9 ? 1 : 0);
+        return {
+          ...rest,
+          completeness: { hasActivePlan, hasSignedAgreement, hasConsent, riskAssessmentCount, score },
+        };
+      });
 
       return { items, total, page: input.page, limit: input.limit };
     }),
@@ -1553,4 +1580,168 @@ export const clientsRouter = router({
 
       return { events: page, total };
     }),
+
+  // ─────────────────────────────────────────
+  // PENDING ACTIONS (compliance queue)
+  // ─────────────────────────────────────────
+
+  getPendingActions: protectedProcedure.query(async ({ ctx }) => {
+    const { organisationId } = ctx.user as { organisationId: string };
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const thirtyDaysLater = new Date(today);
+    thirtyDaysLater.setDate(thirtyDaysLater.getDate() + 30);
+    const twelveMonthsAgo = new Date(today);
+    twelveMonthsAgo.setFullYear(twelveMonthsAgo.getFullYear() - 1);
+
+    const REQUIRED_CONSENT_TYPES = [
+      "CARE_AND_SUPPORT",
+      "INFORMATION_SHARING",
+      "MEDICATION",
+    ] as ConsentType[];
+
+    const [plansRaw, reviewsRaw, riskRaw, agreementsRaw, expiredConsentsRaw, activeClients] =
+      await Promise.all([
+        ctx.prisma.personalPlan.findMany({
+          where: { organisationId, status: "DRAFT", serviceUser: { status: "ACTIVE" } },
+          select: {
+            id: true,
+            planVersion: true,
+            createdAt: true,
+            serviceUserId: true,
+            serviceUser: { select: { firstName: true, lastName: true } },
+          },
+          orderBy: { createdAt: "asc" },
+        }),
+        ctx.prisma.serviceUserReview.findMany({
+          where: {
+            organisationId,
+            nextReviewDate: { lt: today },
+            serviceUser: { status: "ACTIVE" },
+          },
+          select: {
+            id: true,
+            reviewDate: true,
+            nextReviewDate: true,
+            reviewType: true,
+            serviceUserId: true,
+            serviceUser: { select: { firstName: true, lastName: true } },
+          },
+          orderBy: { reviewDate: "desc" },
+        }),
+        ctx.prisma.riskAssessment.findMany({
+          where: {
+            organisationId,
+            status: "ACTIVE",
+            nextReviewDate: { lt: today },
+            serviceUser: { status: "ACTIVE" },
+          },
+          select: {
+            id: true,
+            assessmentType: true,
+            nextReviewDate: true,
+            serviceUserId: true,
+            serviceUser: { select: { firstName: true, lastName: true } },
+          },
+          orderBy: { nextReviewDate: "asc" },
+        }),
+        ctx.prisma.serviceAgreement.findMany({
+          where: {
+            organisationId,
+            endDate: { gte: today, lte: thirtyDaysLater },
+            serviceUser: { status: "ACTIVE" },
+          },
+          select: {
+            id: true,
+            endDate: true,
+            serviceUserId: true,
+            serviceUser: { select: { firstName: true, lastName: true } },
+          },
+          orderBy: { endDate: "asc" },
+        }),
+        ctx.prisma.consentRecord.findMany({
+          where: {
+            organisationId,
+            consentDate: { lt: twelveMonthsAgo },
+            serviceUser: { status: "ACTIVE" },
+          },
+          select: {
+            id: true,
+            consentType: true,
+            consentDate: true,
+            serviceUserId: true,
+            serviceUser: { select: { firstName: true, lastName: true } },
+          },
+          orderBy: { consentDate: "asc" },
+        }),
+        ctx.prisma.serviceUser.findMany({
+          where: { organisationId, status: "ACTIVE" },
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            consentRecords: { select: { consentType: true } },
+          },
+        }),
+      ]);
+
+    // Deduplicate reviews — one per client, keeping the most recent review date
+    const reviewMap = new Map<string, (typeof reviewsRaw)[0]>();
+    for (const r of reviewsRaw) {
+      if (!reviewMap.has(r.serviceUserId)) reviewMap.set(r.serviceUserId, r);
+    }
+    const overdueReviews = Array.from(reviewMap.values());
+
+    const missingConsents = activeClients.flatMap((client) => {
+      const given = new Set(client.consentRecords.map((c) => c.consentType));
+      const missingTypes = REQUIRED_CONSENT_TYPES.filter((t) => !given.has(t));
+      return missingTypes.length > 0
+        ? [{ clientId: client.id, clientName: `${client.firstName} ${client.lastName}`, missingTypes }]
+        : [];
+    });
+
+    return {
+      plansAwaitingApproval: plansRaw.map((p) => ({
+        id: p.id,
+        planVersion: p.planVersion,
+        createdAt: p.createdAt,
+        clientId: p.serviceUserId,
+        clientName: `${p.serviceUser.firstName} ${p.serviceUser.lastName}`,
+        href: `/clients/${p.serviceUserId}/personal-plan`,
+      })),
+      overdueReviews: overdueReviews.map((r) => ({
+        id: r.id,
+        nextReviewDate: r.nextReviewDate!,
+        reviewType: r.reviewType,
+        clientId: r.serviceUserId,
+        clientName: `${r.serviceUser.firstName} ${r.serviceUser.lastName}`,
+        href: `/clients/${r.serviceUserId}/reviews`,
+      })),
+      overdueRiskAssessments: riskRaw.map((r) => ({
+        id: r.id,
+        assessmentType: r.assessmentType,
+        nextReviewDate: r.nextReviewDate!,
+        clientId: r.serviceUserId,
+        clientName: `${r.serviceUser.firstName} ${r.serviceUser.lastName}`,
+        href: `/clients/${r.serviceUserId}/risk-assessments`,
+      })),
+      expiringSoon: agreementsRaw.map((a) => ({
+        id: a.id,
+        endDate: a.endDate!,
+        clientId: a.serviceUserId,
+        clientName: `${a.serviceUser.firstName} ${a.serviceUser.lastName}`,
+        href: `/clients/${a.serviceUserId}/agreement`,
+      })),
+      expiredConsents: expiredConsentsRaw.map((c) => ({
+        id: c.id,
+        consentType: c.consentType,
+        consentDate: c.consentDate,
+        clientId: c.serviceUserId,
+        clientName: `${c.serviceUser.firstName} ${c.serviceUser.lastName}`,
+        href: `/clients/${c.serviceUserId}/consent`,
+      })),
+      missingConsents,
+    };
+  }),
 });

@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ReadinessWidgetWrapper } from "./readiness-widget-wrapper";
+import { PendingActionsWidget } from "./pending-actions-widget";
 
 export const metadata: Metadata = { title: "Dashboard — CareScot" };
 
@@ -82,6 +83,8 @@ export default async function DashboardPage() {
           {org?.name ?? "Your organisation"} — CareScot Management System
         </p>
       </div>
+
+      <PendingActionsWidget />
 
       <ReadinessWidgetWrapper role={session.user.role} />
 

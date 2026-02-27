@@ -17,6 +17,7 @@ import {
   BarChart2,
   Bell,
   Settings,
+  ClipboardList,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -30,6 +31,7 @@ import {
 
 const NAV_ITEMS = [
   { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
+  { label: "Tasks", href: "/tasks", icon: ClipboardList },
   { label: "Clients", href: "/clients", icon: Users },
   { label: "Staff", href: "/staff", icon: UserCog },
   { label: "Medication", href: "/medication", icon: Pill },

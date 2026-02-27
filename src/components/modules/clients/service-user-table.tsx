@@ -7,6 +7,7 @@ import { trpc } from "@/lib/trpc";
 import { downloadCsv } from "@/lib/download-csv";
 import { useDebounce } from "@/lib/use-debounce";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -31,7 +32,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { StatusBadge } from "./status-badge";
-import { formatDate } from "@/lib/utils";
+import { formatDate, cn } from "@/lib/utils";
 import type { ServiceUserStatus } from "@prisma/client";
 
 const STATUS_OPTIONS: { value: ServiceUserStatus | "ALL"; label: string }[] = [
@@ -122,6 +123,7 @@ export function ServiceUserTable() {
               <TableHead>Postcode</TableHead>
               <TableHead>Phone</TableHead>
               <TableHead>Status</TableHead>
+              <TableHead>Completeness</TableHead>
               <TableHead className="w-12 text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
@@ -129,14 +131,14 @@ export function ServiceUserTable() {
             {isPending ? (
               <>{Array.from({ length: 5 }).map((_, i) => (
                 <TableRow key={i}>
-                  {Array.from({ length: 7 }).map((_, j) => (
+                  {Array.from({ length: 8 }).map((_, j) => (
                     <TableCell key={j}><div className="h-4 w-full animate-pulse rounded bg-muted" /></TableCell>
                   ))}
                 </TableRow>
               ))}</>
             ) : !data?.items.length ? (
               <TableRow>
-                <TableCell colSpan={7} className="h-32">
+                <TableCell colSpan={8} className="h-32">
                   <div className="flex flex-col items-center gap-2 text-muted-foreground">
                     <UserRound className="h-8 w-8" />
                     <p className="text-sm">No service users found</p>
@@ -168,6 +170,9 @@ export function ServiceUserTable() {
                   </TableCell>
                   <TableCell>
                     <StatusBadge status={user.status} />
+                  </TableCell>
+                  <TableCell>
+                    <CompletenessBadge completeness={user.completeness} />
                   </TableCell>
                   <TableCell className="text-right">
                     <DropdownMenu>
@@ -225,6 +230,45 @@ export function ServiceUserTable() {
         </div>
       )}
     </div>
+  );
+}
+
+interface CompletenessData {
+  hasActivePlan: boolean;
+  hasSignedAgreement: boolean;
+  hasConsent: boolean;
+  riskAssessmentCount: number;
+  score: number;
+}
+
+function CompletenessBadge({ completeness }: { completeness: CompletenessData }) {
+  const missing: string[] = [];
+  if (!completeness.hasActivePlan) missing.push("active plan");
+  if (!completeness.hasSignedAgreement) missing.push("signed agreement");
+  if (!completeness.hasConsent) missing.push("consent records");
+  if (completeness.riskAssessmentCount < 9)
+    missing.push(`risk assessments (${completeness.riskAssessmentCount}/9)`);
+
+  const tooltipText =
+    missing.length === 0
+      ? "All documentation complete"
+      : `Missing: ${missing.join(", ")}`;
+
+  return (
+    <Badge
+      variant="outline"
+      className={cn(
+        "text-xs font-medium cursor-default select-none",
+        completeness.score === 4 &&
+          "bg-green-50 text-green-700 border-green-200",
+        completeness.score === 3 &&
+          "bg-amber-50 text-amber-700 border-amber-200",
+        completeness.score <= 2 && "bg-red-50 text-red-700 border-red-200",
+      )}
+      title={tooltipText}
+    >
+      {completeness.score}/4
+    </Badge>
   );
 }
 
