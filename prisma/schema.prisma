@@ -517,6 +517,7 @@ model Organisation {
   bankHolidays                 BankHoliday[]
   invoices                     Invoice[]
   creditNotes                  CreditNote[]
+  sharedHCPs                   SharedHealthcareProfessional[]
 
   @@map("organisations")
 }
@@ -721,6 +722,7 @@ model ServiceUserHealthcareProfessional {
   id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   serviceUserId    String   @map("service_user_id") @db.Uuid
   organisationId   String   @map("organisation_id") @db.Uuid
+  sharedHcpId      String?  @map("shared_hcp_id") @db.Uuid
   professionalName String   @map("professional_name")
   role             String?
   organisation     String?
@@ -732,9 +734,28 @@ model ServiceUserHealthcareProfessional {
   createdBy        String?  @map("created_by") @db.Uuid
   updatedBy        String?  @map("updated_by") @db.Uuid
 
-  serviceUser ServiceUser @relation(fields: [serviceUserId], references: [id])
+  serviceUser ServiceUser                   @relation(fields: [serviceUserId], references: [id])
+  sharedHcp   SharedHealthcareProfessional? @relation(fields: [sharedHcpId], references: [id])
 
   @@map("service_user_healthcare_professionals")
+}
+
+model SharedHealthcareProfessional {
+  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organisationId   String   @map("organisation_id") @db.Uuid
+  professionalName String   @map("professional_name")
+  role             String?
+  organisation     String?
+  phone            String?
+  email            String?
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt        DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+  createdBy        String?  @map("created_by") @db.Uuid
+
+  org         Organisation                        @relation(fields: [organisationId], references: [id])
+  clientLinks ServiceUserHealthcareProfessional[]
+
+  @@map("shared_healthcare_professionals")
 }
 
 model PersonalPlan {

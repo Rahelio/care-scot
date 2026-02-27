@@ -1277,4 +1277,280 @@ export const clientsRouter = router({
       });
       return ctx.prisma.serviceUserStaff.delete({ where: { id: input.id } });
     }),
+
+  // ─────────────────────────────────────────
+  // SHARED HEALTHCARE PROFESSIONAL DIRECTORY
+  // ─────────────────────────────────────────
+
+  listSharedHCPs: protectedProcedure
+    .input(z.object({ search: z.string().optional() }))
+    .query(async ({ ctx, input }) => {
+      const { organisationId } = ctx.user as { organisationId: string };
+      return ctx.prisma.sharedHealthcareProfessional.findMany({
+        where: {
+          organisationId,
+          ...(input.search && {
+            OR: [
+              { professionalName: { contains: input.search, mode: "insensitive" as const } },
+              { role: { contains: input.search, mode: "insensitive" as const } },
+              { organisation: { contains: input.search, mode: "insensitive" as const } },
+            ],
+          }),
+        },
+        orderBy: { professionalName: "asc" },
+      });
+    }),
+
+  createSharedHCP: protectedProcedure
+    .input(
+      z.object({
+        professionalName: z.string().min(1),
+        role: z.string().optional(),
+        organisation: z.string().optional(),
+        phone: z.string().optional(),
+        email: z.string().email().optional().or(z.literal("")),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { organisationId, id: userId } = ctx.user as {
+        organisationId: string;
+        id: string;
+      };
+      return ctx.prisma.sharedHealthcareProfessional.create({
+        data: { ...input, email: input.email || undefined, organisationId, createdBy: userId },
+      });
+    }),
+
+  updateSharedHCP: protectedProcedure
+    .input(
+      z.object({
+        id: z.string().min(1),
+        professionalName: z.string().min(1).optional(),
+        role: z.string().optional(),
+        organisation: z.string().optional(),
+        phone: z.string().optional(),
+        email: z.string().email().optional().or(z.literal("")),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { organisationId } = ctx.user as { organisationId: string };
+      const { id, email, ...rest } = input;
+      await ctx.prisma.sharedHealthcareProfessional.findUniqueOrThrow({
+        where: { id, organisationId },
+      });
+      return ctx.prisma.sharedHealthcareProfessional.update({
+        where: { id },
+        data: { ...rest, email: email || undefined },
+      });
+    }),
+
+  listHealthcareProfessionals: protectedProcedure
+    .input(z.object({ serviceUserId: z.string().min(1) }))
+    .query(async ({ ctx, input }) => {
+      const { organisationId } = ctx.user as { organisationId: string };
+      return ctx.prisma.serviceUserHealthcareProfessional.findMany({
+        where: { serviceUserId: input.serviceUserId, organisationId },
+        orderBy: { createdAt: "asc" },
+        include: { sharedHcp: true },
+      });
+    }),
+
+  linkHCP: protectedProcedure
+    .input(
+      z.object({
+        serviceUserId: z.string().min(1),
+        sharedHcpId: z.string().optional(),
+        professionalName: z.string().min(1).optional(),
+        role: z.string().optional(),
+        organisation: z.string().optional(),
+        phone: z.string().optional(),
+        email: z.string().email().optional().or(z.literal("")),
+        notes: z.string().optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { organisationId, id: userId } = ctx.user as {
+        organisationId: string;
+        id: string;
+      };
+
+      let fields: {
+        professionalName: string;
+        role?: string;
+        organisation?: string;
+        phone?: string;
+        email?: string;
+      };
+
+      if (input.sharedHcpId) {
+        const shared = await ctx.prisma.sharedHealthcareProfessional.findUniqueOrThrow({
+          where: { id: input.sharedHcpId, organisationId },
+        });
+        fields = {
+          professionalName: shared.professionalName,
+          role: shared.role ?? undefined,
+          organisation: shared.organisation ?? undefined,
+          phone: shared.phone ?? undefined,
+          email: shared.email ?? undefined,
+        };
+      } else {
+        if (!input.professionalName) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "professionalName is required" });
+        }
+        fields = {
+          professionalName: input.professionalName,
+          role: input.role,
+          organisation: input.organisation,
+          phone: input.phone,
+          email: input.email || undefined,
+        };
+      }
+
+      return ctx.prisma.serviceUserHealthcareProfessional.create({
+        data: {
+          serviceUserId: input.serviceUserId,
+          organisationId,
+          sharedHcpId: input.sharedHcpId ?? null,
+          notes: input.notes,
+          createdBy: userId,
+          updatedBy: userId,
+          ...fields,
+        },
+      });
+    }),
+
+  // ─────────────────────────────────────────
+  // CLIENT TIMELINE
+  // ─────────────────────────────────────────
+
+  getTimeline: protectedProcedure
+    .input(
+      z.object({
+        serviceUserId: z.string().min(1),
+        limit: z.number().min(1).max(200).default(50),
+        offset: z.number().min(0).default(0),
+      })
+    )
+    .query(async ({ ctx, input }) => {
+      const { organisationId } = ctx.user as { organisationId: string };
+      const { serviceUserId } = input;
+
+      const [
+        careVisits,
+        personalPlans,
+        riskAssessments,
+        consentRecords,
+        reviews,
+        healthRecords,
+        incidents,
+      ] = await Promise.all([
+        ctx.prisma.careVisitRecord.findMany({
+          where: { serviceUserId, organisationId },
+          take: 100,
+          orderBy: { visitDate: "desc" },
+          include: { staffMember: { select: { firstName: true, lastName: true } } },
+        }),
+        ctx.prisma.personalPlan.findMany({
+          where: { serviceUserId, organisationId },
+          take: 100,
+          orderBy: { createdAt: "desc" },
+        }),
+        ctx.prisma.riskAssessment.findMany({
+          where: { serviceUserId, organisationId },
+          take: 100,
+          orderBy: { assessmentDate: "desc" },
+        }),
+        ctx.prisma.consentRecord.findMany({
+          where: { serviceUserId, organisationId },
+          take: 100,
+          orderBy: { consentDate: "desc" },
+        }),
+        ctx.prisma.serviceUserReview.findMany({
+          where: { serviceUserId, organisationId },
+          take: 100,
+          orderBy: { reviewDate: "desc" },
+        }),
+        ctx.prisma.healthRecord.findMany({
+          where: { serviceUserId, organisationId },
+          take: 100,
+          orderBy: { recordedDate: "desc" },
+        }),
+        ctx.prisma.incident.findMany({
+          where: { serviceUserId, organisationId },
+          take: 100,
+          orderBy: { incidentDate: "desc" },
+        }),
+      ]);
+
+      type TimelineEvent = {
+        id: string;
+        type: string;
+        date: Date;
+        title: string;
+        subtitle?: string;
+        href: string;
+      };
+
+      const events: TimelineEvent[] = [
+        ...careVisits.map((v) => ({
+          id: v.id,
+          type: "CARE_VISIT",
+          date: v.visitDate,
+          title: `Care visit${v.staffMember ? ` — ${v.staffMember.firstName} ${v.staffMember.lastName}` : ""}`,
+          href: "/care-records",
+        })),
+        ...personalPlans.map((p) => ({
+          id: p.id,
+          type: "PERSONAL_PLAN",
+          date: p.createdAt,
+          title: `Personal plan v${p.planVersion}`,
+          subtitle: p.status,
+          href: "/personal-plan",
+        })),
+        ...riskAssessments.map((r) => ({
+          id: r.id,
+          type: "RISK_ASSESSMENT",
+          date: r.assessmentDate,
+          title: `${r.assessmentType.replace(/_/g, " ")} risk assessment — ${r.riskLevel}`,
+          href: "/risk-assessments",
+        })),
+        ...consentRecords.map((c) => ({
+          id: c.id,
+          type: "CONSENT",
+          date: c.consentDate,
+          title: `Consent ${c.consentType.replace(/_/g, " ")}: ${c.consentGiven ? "given" : "withheld"}`,
+          href: "/consent",
+        })),
+        ...reviews.map((r) => ({
+          id: r.id,
+          type: "REVIEW",
+          date: r.reviewDate,
+          title: `${r.reviewType} review`,
+          href: "/reviews",
+        })),
+        ...healthRecords.map((h) => ({
+          id: h.id,
+          type: "HEALTH_RECORD",
+          date: h.recordedDate,
+          title: h.title,
+          subtitle: h.recordType.replace(/_/g, " "),
+          href: "/health",
+        })),
+        ...incidents.map((i) => ({
+          id: i.id,
+          type: "INCIDENT",
+          date: i.incidentDate,
+          title: `${i.incidentType.replace(/_/g, " ")} incident`,
+          subtitle: i.severity,
+          href: "/incidents",
+        })),
+      ];
+
+      events.sort((a, b) => b.date.getTime() - a.date.getTime());
+
+      const total = events.length;
+      const page = events.slice(input.offset, input.offset + input.limit);
+
+      return { events: page, total };
+    }),
 });

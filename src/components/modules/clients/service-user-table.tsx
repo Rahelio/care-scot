@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { Search, Plus, UserRound, Download } from "lucide-react";
+import { Search, Plus, UserRound, Download, MoreHorizontal } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { downloadCsv } from "@/lib/download-csv";
 import { useDebounce } from "@/lib/use-debounce";
@@ -23,6 +23,13 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { StatusBadge } from "./status-badge";
 import { formatDate } from "@/lib/utils";
 import type { ServiceUserStatus } from "@prisma/client";
@@ -115,20 +122,21 @@ export function ServiceUserTable() {
               <TableHead>Postcode</TableHead>
               <TableHead>Phone</TableHead>
               <TableHead>Status</TableHead>
+              <TableHead className="w-12 text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {isPending ? (
               <>{Array.from({ length: 5 }).map((_, i) => (
                 <TableRow key={i}>
-                  {Array.from({ length: 6 }).map((_, j) => (
+                  {Array.from({ length: 7 }).map((_, j) => (
                     <TableCell key={j}><div className="h-4 w-full animate-pulse rounded bg-muted" /></TableCell>
                   ))}
                 </TableRow>
               ))}</>
             ) : !data?.items.length ? (
               <TableRow>
-                <TableCell colSpan={6} className="h-32">
+                <TableCell colSpan={7} className="h-32">
                   <div className="flex flex-col items-center gap-2 text-muted-foreground">
                     <UserRound className="h-8 w-8" />
                     <p className="text-sm">No service users found</p>
@@ -160,6 +168,25 @@ export function ServiceUserTable() {
                   </TableCell>
                   <TableCell>
                     <StatusBadge status={user.status} />
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="icon" className="h-8 w-8">
+                          <MoreHorizontal className="h-4 w-4" />
+                          <span className="sr-only">Actions</span>
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem asChild>
+                          <Link href={`/clients/${user.id}`}>View Profile</Link>
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem asChild>
+                          <Link href={`/clients/${user.id}/care-records/new`}>Log Care Visit</Link>
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </TableCell>
                 </TableRow>
               ))
