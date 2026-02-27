@@ -24,7 +24,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { RiskAssessmentForm, ASSESSMENT_TYPE_LABELS } from "./risk-assessment-form";
+import {
+  RiskAssessmentForm,
+  ASSESSMENT_TYPE_LABELS,
+  CHECKLIST_QUESTIONS,
+  type ChecklistAnswer,
+} from "./risk-assessment-form";
 import { formatDate } from "@/lib/utils";
 import type { RiskAssessmentType, RiskLevel } from "@prisma/client";
 
@@ -90,6 +95,74 @@ function getStatus(assessment?: Assessment): AssessmentStatus {
   return daysUntil <= 30 ? "due_for_review" : "completed";
 }
 
+function parseChecklistForDisplay(raw?: string | null): Record<string, ChecklistAnswer> | null {
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    if (parsed._type === "checklist" && parsed.answers && typeof parsed.answers === "object") {
+      return parsed.answers as Record<string, ChecklistAnswer>;
+    }
+  } catch {
+    // not JSON
+  }
+  return null;
+}
+
+function ChecklistAnswerBadge({ answer }: { answer: ChecklistAnswer }) {
+  if (answer === "yes") {
+    return (
+      <span className="inline-flex items-center rounded border border-green-300 bg-green-50 px-1.5 py-0.5 text-xs font-medium text-green-700">
+        ✓ Yes
+      </span>
+    );
+  }
+  if (answer === "no") {
+    return (
+      <span className="inline-flex items-center rounded border border-red-300 bg-red-50 px-1.5 py-0.5 text-xs font-medium text-red-700">
+        ✗ No
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center rounded border border-slate-300 bg-slate-100 px-1.5 py-0.5 text-xs font-medium text-slate-600">
+      — N/A
+    </span>
+  );
+}
+
+function ChecklistDisplay({
+  assessmentType,
+  answers,
+}: {
+  assessmentType: RiskAssessmentType;
+  answers: Record<string, ChecklistAnswer>;
+}) {
+  const sections = CHECKLIST_QUESTIONS[assessmentType];
+  return (
+    <div className="space-y-4">
+      {sections.map((section) => {
+        const answered = section.items.filter((item) => answers[item.id] !== undefined);
+        if (answered.length === 0) return null;
+        return (
+          <div key={section.section}>
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1.5">
+              {section.section}
+            </p>
+            <div className="space-y-1.5">
+              {answered.map((item) => (
+                <div key={item.id} className="flex items-start justify-between gap-3">
+                  <p className="text-sm leading-snug flex-1">{item.question}</p>
+                  <ChecklistAnswerBadge answer={answers[item.id]} />
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 // ── History sub-component ──────────────────────────────────────────────────────
 
 function AssessmentHistory({
@@ -114,6 +187,7 @@ function AssessmentHistory({
       {history.map((item) => {
         const isOpen = expanded === item.id;
         const riskCfg = RISK_LEVEL_CONFIG[item.riskLevel as RiskLevel];
+        const checklistAnswers = parseChecklistForDisplay(item.assessmentDetail);
         return (
           <div key={item.id} className="rounded-lg border text-sm">
             <button
@@ -146,16 +220,23 @@ function AssessmentHistory({
               <div className="border-t px-3 py-3 space-y-3 bg-muted/10">
                 {item.assessmentDetail && (
                   <div>
-                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">
+                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">
                       Assessment Detail
                     </p>
-                    <p className="whitespace-pre-wrap">{item.assessmentDetail}</p>
+                    {checklistAnswers ? (
+                      <ChecklistDisplay
+                        assessmentType={assessmentType}
+                        answers={checklistAnswers}
+                      />
+                    ) : (
+                      <p className="whitespace-pre-wrap">{item.assessmentDetail}</p>
+                    )}
                   </div>
                 )}
                 {item.controlMeasures && (
                   <div>
                     <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">
-                      Control Measures
+                      Additional Notes / Control Measures
                     </p>
                     <p className="whitespace-pre-wrap">{item.controlMeasures}</p>
                   </div>
@@ -191,6 +272,7 @@ function DetailDialog({
   const riskCfg = RISK_LEVEL_CONFIG[assessment.riskLevel as RiskLevel];
   const status = getStatus(assessment);
   const statusCfg = STATUS_CONFIG[status];
+  const checklistAnswers = parseChecklistForDisplay(assessment.assessmentDetail);
 
   return (
     <>
@@ -223,12 +305,19 @@ function DetailDialog({
 
       {assessment.assessmentDetail && (
         <div className="mb-4">
-          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1.5">
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
             Assessment Detail
           </p>
-          <p className="text-sm whitespace-pre-wrap leading-relaxed">
-            {assessment.assessmentDetail}
-          </p>
+          {checklistAnswers ? (
+            <ChecklistDisplay
+              assessmentType={assessment.assessmentType as RiskAssessmentType}
+              answers={checklistAnswers}
+            />
+          ) : (
+            <p className="text-sm whitespace-pre-wrap leading-relaxed">
+              {assessment.assessmentDetail}
+            </p>
+          )}
         </div>
       )}
 
@@ -237,7 +326,7 @@ function DetailDialog({
           <Separator className="mb-4" />
           <div className="mb-4">
             <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1.5">
-              Control Measures
+              Additional Notes / Control Measures
             </p>
             <p className="text-sm whitespace-pre-wrap leading-relaxed">
               {assessment.controlMeasures}
@@ -439,7 +528,7 @@ export function RiskAssessmentList({ serviceUserId }: RiskAssessmentListProps) {
 
       {/* Dialog */}
       <Dialog open={dialog !== null} onOpenChange={(o) => { if (!o) setDialog(null); }}>
-        <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{dialogTitle}</DialogTitle>
           </DialogHeader>
