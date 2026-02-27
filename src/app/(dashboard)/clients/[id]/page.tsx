@@ -5,6 +5,7 @@ import { trpc } from "@/lib/trpc";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { ContactList } from "@/components/modules/clients/contact-list";
+import { AssignedStaffList } from "@/components/modules/clients/assigned-staff-list";
 import { formatDate } from "@/lib/utils";
 
 export default function ClientPersonalInfoPage({
@@ -124,6 +125,10 @@ export default function ClientPersonalInfoPage({
       <Separator />
 
       <ContactList serviceUserId={id} contacts={client.contacts} />
+
+      <Separator />
+
+      <AssignedStaffList serviceUserId={id} />
 
       {client.healthcareProfessionals.length > 0 && (
         <>

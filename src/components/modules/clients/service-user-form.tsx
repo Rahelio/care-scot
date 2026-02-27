@@ -1,12 +1,14 @@
 "use client";
 
+import { useState } from "react";
 import { useForm, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Plus, Trash2 } from "lucide-react";
+import { Plus, Trash2, AlertTriangle } from "lucide-react";
 import { trpc } from "@/lib/trpc";
+import { useDebounce } from "@/lib/use-debounce";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -63,6 +65,13 @@ interface ServiceUserFormProps {
 
 export function ServiceUserForm({ defaultValues, mode, clientId }: ServiceUserFormProps) {
   const router = useRouter();
+  const [chiToCheck, setChiToCheck] = useState("");
+  const debouncedChi = useDebounce(chiToCheck, 300);
+
+  const { data: chiCheck } = trpc.clients.checkChiNumber.useQuery(
+    { chiNumber: debouncedChi, excludeId: mode === "edit" ? clientId : undefined },
+    { enabled: debouncedChi.length > 0 }
+  );
 
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
@@ -180,8 +189,22 @@ export function ServiceUserForm({ defaultValues, mode, clientId }: ServiceUserFo
                 <FormItem>
                   <FormLabel>CHI Number</FormLabel>
                   <FormControl>
-                    <Input {...field} placeholder="0000000000" />
+                    <Input
+                      {...field}
+                      placeholder="0000000000"
+                      onBlur={(e) => {
+                        field.onBlur();
+                        setChiToCheck(e.target.value.trim());
+                      }}
+                    />
                   </FormControl>
+                  {chiCheck?.duplicate && (
+                    <p className="text-sm text-destructive flex items-center gap-1 mt-1">
+                      <AlertTriangle className="h-3.5 w-3.5" />
+                      This CHI number is already assigned to{" "}
+                      <strong>{chiCheck.existingName}</strong>
+                    </p>
+                  )}
                   <FormMessage />
                 </FormItem>
               )}

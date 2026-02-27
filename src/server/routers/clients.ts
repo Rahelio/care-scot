@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { router, protectedProcedure } from "../trpc";
-import { ServiceUserStatus, RiskAssessmentType, RiskLevel, ConsentType } from "@prisma/client";
+import { ServiceUserStatus, RiskAssessmentType, RiskLevel, ConsentType, StaffAssignmentRole } from "@prisma/client";
 import { TRPCError } from "@trpc/server";
 import { createAuditLog } from "../middleware/audit";
 
@@ -125,6 +125,20 @@ export const clientsRouter = router({
         id: string;
       };
       const data = { ...input, email: input.email || undefined };
+
+      if (input.chiNumber) {
+        const existing = await ctx.prisma.serviceUser.findFirst({
+          where: { organisationId, chiNumber: input.chiNumber },
+          select: { firstName: true, lastName: true },
+        });
+        if (existing) {
+          throw new TRPCError({
+            code: "CONFLICT",
+            message: `CHI number already assigned to ${existing.firstName} ${existing.lastName}`,
+          });
+        }
+      }
+
       return ctx.prisma.serviceUser.create({
         data: { ...data, organisationId, createdBy: userId, updatedBy: userId },
       });
@@ -187,6 +201,20 @@ export const clientsRouter = router({
         id: string;
       };
       const { id, email, ...rest } = input;
+
+      if (input.chiNumber) {
+        const existing = await ctx.prisma.serviceUser.findFirst({
+          where: { organisationId, chiNumber: input.chiNumber, NOT: { id } },
+          select: { firstName: true, lastName: true },
+        });
+        if (existing) {
+          throw new TRPCError({
+            code: "CONFLICT",
+            message: `CHI number already assigned to ${existing.firstName} ${existing.lastName}`,
+          });
+        }
+      }
+
       return ctx.prisma.serviceUser.update({
         where: { id, organisationId },
         data: { ...rest, email: email || undefined, updatedBy: userId },
@@ -1093,5 +1121,160 @@ export const clientsRouter = router({
         orderBy: { visitDate: "desc" },
         include: { staffMember: { select: { id: true, firstName: true, lastName: true } } },
       });
+    }),
+
+  // ─────────────────────────────────────────
+  // CHI NUMBER DUPLICATE CHECK
+  // ─────────────────────────────────────────
+
+  checkChiNumber: protectedProcedure
+    .input(
+      z.object({
+        chiNumber: z.string().min(1),
+        excludeId: z.string().min(1).optional(),
+      })
+    )
+    .query(async ({ ctx, input }) => {
+      const { organisationId } = ctx.user as { organisationId: string };
+      const existing = await ctx.prisma.serviceUser.findFirst({
+        where: {
+          organisationId,
+          chiNumber: input.chiNumber,
+          ...(input.excludeId && { NOT: { id: input.excludeId } }),
+        },
+        select: { firstName: true, lastName: true },
+      });
+      if (!existing) return { duplicate: false as const };
+      return {
+        duplicate: true as const,
+        existingName: `${existing.firstName} ${existing.lastName}`,
+      };
+    }),
+
+  // ─────────────────────────────────────────
+  // HEALTH RECORD DELETE
+  // ─────────────────────────────────────────
+
+  deleteHealthRecord: protectedProcedure
+    .input(z.object({ id: z.string().min(1) }))
+    .mutation(async ({ ctx, input }) => {
+      const { organisationId } = ctx.user as { organisationId: string };
+      await ctx.prisma.healthRecord.findUniqueOrThrow({
+        where: { id: input.id, organisationId },
+      });
+      return ctx.prisma.healthRecord.delete({ where: { id: input.id } });
+    }),
+
+  // ─────────────────────────────────────────
+  // CONSENT RECORD UPDATE / DELETE
+  // ─────────────────────────────────────────
+
+  updateConsentRecord: protectedProcedure
+    .input(
+      z.object({
+        id: z.string().min(1),
+        signedBy: z.string().optional(),
+        relationshipToServiceUser: z.string().optional(),
+        consentDate: z.coerce.date().optional(),
+        reviewDate: z.coerce.date().optional(),
+        capacityAssessed: z.boolean().optional(),
+        capacityOutcome: z.string().optional(),
+        awiDocumentation: z.string().optional(),
+        bestInterestDecision: z.string().optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { organisationId, id: userId } = ctx.user as {
+        organisationId: string;
+        id: string;
+      };
+      const { id, ...data } = input;
+      await ctx.prisma.consentRecord.findUniqueOrThrow({
+        where: { id, organisationId },
+      });
+      return ctx.prisma.consentRecord.update({
+        where: { id },
+        data: { ...data, updatedBy: userId },
+      });
+    }),
+
+  deleteConsentRecord: protectedProcedure
+    .input(z.object({ id: z.string().min(1) }))
+    .mutation(async ({ ctx, input }) => {
+      const { organisationId } = ctx.user as { organisationId: string };
+      await ctx.prisma.consentRecord.findUniqueOrThrow({
+        where: { id: input.id, organisationId },
+      });
+      return ctx.prisma.consentRecord.delete({ where: { id: input.id } });
+    }),
+
+  // ─────────────────────────────────────────
+  // ASSIGNED STAFF (KEY WORKER / REGULAR CARER)
+  // ─────────────────────────────────────────
+
+  listAssignedStaff: protectedProcedure
+    .input(z.object({ serviceUserId: z.string().min(1) }))
+    .query(async ({ ctx, input }) => {
+      const { organisationId } = ctx.user as { organisationId: string };
+      return ctx.prisma.serviceUserStaff.findMany({
+        where: { serviceUserId: input.serviceUserId, organisationId },
+        orderBy: { createdAt: "asc" },
+        include: {
+          staffMember: {
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              jobTitle: true,
+              roleType: true,
+              status: true,
+            },
+          },
+        },
+      });
+    }),
+
+  assignStaff: protectedProcedure
+    .input(
+      z.object({
+        serviceUserId: z.string().min(1),
+        staffMemberId: z.string().min(1),
+        role: z.enum(["KEY_WORKER", "REGULAR_CARER"]),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { organisationId, id: userId } = ctx.user as {
+        organisationId: string;
+        id: string;
+      };
+      await ctx.prisma.staffMember.findUniqueOrThrow({
+        where: { id: input.staffMemberId, organisationId },
+      });
+      return ctx.prisma.serviceUserStaff.upsert({
+        where: {
+          serviceUserId_staffMemberId: {
+            serviceUserId: input.serviceUserId,
+            staffMemberId: input.staffMemberId,
+          },
+        },
+        update: { role: input.role as StaffAssignmentRole },
+        create: {
+          serviceUserId: input.serviceUserId,
+          staffMemberId: input.staffMemberId,
+          organisationId,
+          role: input.role as StaffAssignmentRole,
+          createdBy: userId,
+        },
+      });
+    }),
+
+  removeStaffAssignment: protectedProcedure
+    .input(z.object({ id: z.string().min(1) }))
+    .mutation(async ({ ctx, input }) => {
+      const { organisationId } = ctx.user as { organisationId: string };
+      await ctx.prisma.serviceUserStaff.findUniqueOrThrow({
+        where: { id: input.id, organisationId },
+      });
+      return ctx.prisma.serviceUserStaff.delete({ where: { id: input.id } });
     }),
 });
