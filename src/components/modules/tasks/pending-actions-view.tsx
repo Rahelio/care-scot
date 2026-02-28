@@ -129,6 +129,35 @@ export function PendingActionsView() {
         )}
       </SectionCard>
 
+      {/* Clients Without a Personal Plan */}
+      <SectionCard
+        title="Clients Without a Personal Plan"
+        count={data.clientsWithoutPlan.length}
+      >
+        {data.clientsWithoutPlan.length === 0 ? (
+          <AllClear />
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Client</TableHead>
+                <TableHead className="w-16" />
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {data.clientsWithoutPlan.map((item) => (
+                <TableRow key={item.clientId}>
+                  <TableCell className="font-medium">{item.clientName}</TableCell>
+                  <TableCell className="text-right">
+                    <ViewLink href={item.href} />
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+      </SectionCard>
+
       {/* Annual Reviews Overdue */}
       <SectionCard
         title="Annual Reviews Overdue"
@@ -156,6 +185,35 @@ export function PendingActionsView() {
                   <TableCell className="text-muted-foreground">
                     {formatEnum(item.reviewType as string)}
                   </TableCell>
+                  <TableCell className="text-right">
+                    <ViewLink href={item.href} />
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+      </SectionCard>
+
+      {/* Clients Never Reviewed */}
+      <SectionCard
+        title="Clients Never Reviewed"
+        count={data.clientsNeverReviewed.length}
+      >
+        {data.clientsNeverReviewed.length === 0 ? (
+          <AllClear />
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Client</TableHead>
+                <TableHead className="w-16" />
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {data.clientsNeverReviewed.map((item) => (
+                <TableRow key={item.clientId}>
+                  <TableCell className="font-medium">{item.clientName}</TableCell>
                   <TableCell className="text-right">
                     <ViewLink href={item.href} />
                   </TableCell>
@@ -203,6 +261,49 @@ export function PendingActionsView() {
         )}
       </SectionCard>
 
+      {/* Missing Risk Assessments */}
+      <SectionCard
+        title="Missing Risk Assessments"
+        count={data.missingRiskAssessments.length}
+      >
+        {data.missingRiskAssessments.length === 0 ? (
+          <AllClear />
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Client</TableHead>
+                <TableHead>Missing Types</TableHead>
+                <TableHead className="w-16" />
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {data.missingRiskAssessments.map((item) => (
+                <TableRow key={item.clientId}>
+                  <TableCell className="font-medium">{item.clientName}</TableCell>
+                  <TableCell>
+                    <div className="flex flex-wrap gap-1">
+                      {item.missingTypes.map((t) => (
+                        <Badge
+                          key={t}
+                          variant="outline"
+                          className="text-xs text-red-600 border-red-200"
+                        >
+                          {formatEnum(t as string)}
+                        </Badge>
+                      ))}
+                    </div>
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <ViewLink href={`/clients/${item.clientId}/risk-assessments`} />
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+      </SectionCard>
+
       {/* Agreements Expiring Soon */}
       <SectionCard
         title="Agreements Expiring (within 30 days)"
@@ -242,6 +343,68 @@ export function PendingActionsView() {
                   </TableRow>
                 );
               })}
+            </TableBody>
+          </Table>
+        )}
+      </SectionCard>
+
+      {/* Clients Without a Service Agreement */}
+      <SectionCard
+        title="Clients Without a Service Agreement"
+        count={data.clientsWithoutAgreement.length}
+      >
+        {data.clientsWithoutAgreement.length === 0 ? (
+          <AllClear />
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Client</TableHead>
+                <TableHead className="w-16" />
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {data.clientsWithoutAgreement.map((item) => (
+                <TableRow key={item.clientId}>
+                  <TableCell className="font-medium">{item.clientName}</TableCell>
+                  <TableCell className="text-right">
+                    <ViewLink href={item.href} />
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+      </SectionCard>
+
+      {/* Unsigned Service Agreements */}
+      <SectionCard
+        title="Unsigned Service Agreements"
+        count={data.unsignedAgreements.length}
+      >
+        {data.unsignedAgreements.length === 0 ? (
+          <AllClear />
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Client</TableHead>
+                <TableHead>Awaiting Signature From</TableHead>
+                <TableHead className="w-16" />
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {data.unsignedAgreements.map((item) => (
+                <TableRow key={item.clientId}>
+                  <TableCell className="font-medium">{item.clientName}</TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {item.missingSigs.join(", ")}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <ViewLink href={item.href} />
+                  </TableCell>
+                </TableRow>
+              ))}
             </TableBody>
           </Table>
         )}
@@ -296,7 +459,7 @@ export function PendingActionsView() {
             <TableHeader>
               <TableRow>
                 <TableHead>Client</TableHead>
-                <TableHead>Missing Types</TableHead>
+                <TableHead>Outstanding Consent</TableHead>
                 <TableHead className="w-16" />
               </TableRow>
             </TableHeader>
@@ -306,13 +469,19 @@ export function PendingActionsView() {
                   <TableCell className="font-medium">{item.clientName}</TableCell>
                   <TableCell>
                     <div className="flex flex-wrap gap-1">
-                      {item.missingTypes.map((t) => (
+                      {item.missingTypes.map(({ type, reason }) => (
                         <Badge
-                          key={t}
+                          key={type}
                           variant="outline"
-                          className="text-xs text-red-600 border-red-200"
+                          className={
+                            reason === "NOT_GIVEN"
+                              ? "text-xs text-orange-600 border-orange-200"
+                              : "text-xs text-red-600 border-red-200"
+                          }
+                          title={reason === "NOT_GIVEN" ? "Consent declined" : "Not yet recorded"}
                         >
-                          {formatEnum(t as string)}
+                          {formatEnum(type as string)}
+                          {reason === "NOT_GIVEN" ? " — declined" : ""}
                         </Badge>
                       ))}
                     </div>

@@ -1599,9 +1599,22 @@ export const clientsRouter = router({
       "CARE_AND_SUPPORT",
       "INFORMATION_SHARING",
       "MEDICATION",
+      "PHOTOGRAPHY",
     ] as ConsentType[];
 
-    const [plansRaw, reviewsRaw, riskRaw, agreementsRaw, expiredConsentsRaw, activeClients] =
+    const REQUIRED_RISK_ASSESSMENT_TYPES = [
+      "ENVIRONMENTAL",
+      "MOVING_HANDLING",
+      "FALLS",
+      "NUTRITION_HYDRATION",
+      "SKIN_INTEGRITY",
+      "FIRE_SAFETY",
+      "LONE_WORKING",
+      "INFECTION_CONTROL",
+      "SPECIFIC_CARE_TASK",
+    ] as RiskAssessmentType[];
+
+    const [plansRaw, reviewsRaw, riskRaw, agreementsRaw, activeClients] =
       await Promise.all([
         ctx.prisma.personalPlan.findMany({
           where: { organisationId, status: "DRAFT", serviceUser: { status: "ACTIVE" } },
@@ -1660,28 +1673,27 @@ export const clientsRouter = router({
           },
           orderBy: { endDate: "asc" },
         }),
-        ctx.prisma.consentRecord.findMany({
-          where: {
-            organisationId,
-            consentDate: { lt: twelveMonthsAgo },
-            serviceUser: { status: "ACTIVE" },
-          },
-          select: {
-            id: true,
-            consentType: true,
-            consentDate: true,
-            serviceUserId: true,
-            serviceUser: { select: { firstName: true, lastName: true } },
-          },
-          orderBy: { consentDate: "asc" },
-        }),
         ctx.prisma.serviceUser.findMany({
           where: { organisationId, status: "ACTIVE" },
           select: {
             id: true,
             firstName: true,
             lastName: true,
-            consentRecords: { select: { consentType: true } },
+            consentRecords: {
+              select: { id: true, consentType: true, consentGiven: true, consentDate: true },
+              orderBy: { consentDate: "desc" },
+            },
+            personalPlans: { select: { status: true } },
+            riskAssessments: {
+              where: { status: "ACTIVE" },
+              select: { assessmentType: true },
+            },
+            serviceAgreements: {
+              select: { id: true, signedByServiceUser: true, signedByProvider: true },
+              orderBy: { startDate: "desc" },
+              take: 1,
+            },
+            serviceUserReviews: { select: { id: true }, take: 1 },
           },
         }),
       ]);
@@ -1693,13 +1705,116 @@ export const clientsRouter = router({
     }
     const overdueReviews = Array.from(reviewMap.values());
 
-    const missingConsents = activeClients.flatMap((client) => {
-      const given = new Set(client.consentRecords.map((c) => c.consentType));
-      const missingTypes = REQUIRED_CONSENT_TYPES.filter((t) => !given.has(t));
+    // A client is missing consent for a required type if:
+    //   - there is no record at all for that type, OR
+    //   - the most recent record (consentRecords are ordered desc) has consentGiven: false
+    const missingConsents: Array<{
+      clientId: string;
+      clientName: string;
+      missingTypes: Array<{ type: ConsentType; reason: "NOT_RECORDED" | "NOT_GIVEN" }>;
+    }> = [];
+    for (const client of activeClients) {
+      const missingTypes: Array<{ type: ConsentType; reason: "NOT_RECORDED" | "NOT_GIVEN" }> = [];
+      for (const t of REQUIRED_CONSENT_TYPES) {
+        const records = client.consentRecords.filter((c) => c.consentType === t);
+        if (records.length === 0) {
+          missingTypes.push({ type: t, reason: "NOT_RECORDED" });
+        } else if (!records[0].consentGiven) {
+          missingTypes.push({ type: t, reason: "NOT_GIVEN" });
+        }
+      }
+      if (missingTypes.length > 0) {
+        missingConsents.push({
+          clientId: client.id,
+          clientName: `${client.firstName} ${client.lastName}`,
+          missingTypes,
+        });
+      }
+    }
+
+    // Flag the most recent record per (client, consentType) if it is >12 months old.
+    // Only flag actively given consents — declined/missing types are already in missingConsents.
+    const expiredConsents: Array<{
+      id: string;
+      consentType: ConsentType;
+      consentDate: Date;
+      clientId: string;
+      clientName: string;
+      href: string;
+    }> = [];
+    for (const client of activeClients) {
+      const typesSeen = new Set<ConsentType>();
+      for (const record of client.consentRecords) {
+        if (!typesSeen.has(record.consentType)) {
+          typesSeen.add(record.consentType);
+          if (record.consentGiven && record.consentDate < twelveMonthsAgo) {
+            expiredConsents.push({
+              id: record.id,
+              consentType: record.consentType,
+              consentDate: record.consentDate,
+              clientId: client.id,
+              clientName: `${client.firstName} ${client.lastName}`,
+              href: `/clients/${client.id}/consent`,
+            });
+          }
+        }
+      }
+    }
+
+    // Clients with no ACTIVE or DRAFT plan (DRAFT plans already appear in plansAwaitingApproval)
+    const clientsWithoutPlan = activeClients
+      .filter((c) => !c.personalPlans.some((p) => p.status === "ACTIVE" || p.status === "DRAFT"))
+      .map((c) => ({
+        clientId: c.id,
+        clientName: `${c.firstName} ${c.lastName}`,
+        href: `/clients/${c.id}/personal-plan`,
+      }));
+
+    // Clients missing any of the 9 required risk assessment types
+    const missingRiskAssessments = activeClients.flatMap((client) => {
+      const existing = new Set(client.riskAssessments.map((r) => r.assessmentType));
+      const missingTypes = REQUIRED_RISK_ASSESSMENT_TYPES.filter((t) => !existing.has(t));
       return missingTypes.length > 0
         ? [{ clientId: client.id, clientName: `${client.firstName} ${client.lastName}`, missingTypes }]
         : [];
     });
+
+    // Clients with no service agreement at all
+    const clientsWithoutAgreement = activeClients
+      .filter((c) => c.serviceAgreements.length === 0)
+      .map((c) => ({
+        clientId: c.id,
+        clientName: `${c.firstName} ${c.lastName}`,
+        href: `/clients/${c.id}/agreement`,
+      }));
+
+    // Clients whose latest agreement has not been fully signed
+    const unsignedAgreements = activeClients.flatMap((client) => {
+      const agreement = client.serviceAgreements[0];
+      if (!agreement) return [];
+      const missingSigs = [
+        ...(!agreement.signedByServiceUser ? ["Service User"] : []),
+        ...(!agreement.signedByProvider ? ["Provider"] : []),
+      ];
+      return missingSigs.length > 0
+        ? [{
+            id: agreement.id,
+            clientId: client.id,
+            clientName: `${client.firstName} ${client.lastName}`,
+            missingSigs,
+            href: `/clients/${client.id}/agreement`,
+          }]
+        : [];
+    });
+
+    // Clients who have never had any review
+    const clientsNeverReviewed = activeClients
+      .filter((c) => c.serviceUserReviews.length === 0)
+      .map((c) => ({
+        clientId: c.id,
+        clientName: `${c.firstName} ${c.lastName}`,
+        href: `/clients/${c.id}/reviews`,
+      }));
 
     return {
       plansAwaitingApproval: plansRaw.map((p) => ({
@@ -1733,15 +1848,13 @@ export const clientsRouter = router({
         clientName: `${a.serviceUser.firstName} ${a.serviceUser.lastName}`,
         href: `/clients/${a.serviceUserId}/agreement`,
       })),
-      expiredConsents: expiredConsentsRaw.map((c) => ({
-        id: c.id,
-        consentType: c.consentType,
-        consentDate: c.consentDate,
-        clientId: c.serviceUserId,
-        clientName: `${c.serviceUser.firstName} ${c.serviceUser.lastName}`,
-        href: `/clients/${c.serviceUserId}/consent`,
-      })),
+      expiredConsents,
       missingConsents,
+      clientsWithoutPlan,
+      missingRiskAssessments,
+      clientsWithoutAgreement,
+      unsignedAgreements,
+      clientsNeverReviewed,
     };
   }),
 });

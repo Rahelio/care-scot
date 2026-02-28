@@ -12,9 +12,14 @@ export function PendingActionsWidget() {
 
   const chips = [
     { label: "plan", plural: "plans", suffix: "pending approval", count: data.plansAwaitingApproval.length },
+    { label: "client", plural: "clients", suffix: "without a personal plan", count: data.clientsWithoutPlan.length },
     { label: "review", plural: "reviews", suffix: "overdue", count: data.overdueReviews.length },
+    { label: "client", plural: "clients", suffix: "never reviewed", count: data.clientsNeverReviewed.length },
     { label: "risk assessment", plural: "risk assessments", suffix: "overdue", count: data.overdueRiskAssessments.length },
+    { label: "client", plural: "clients", suffix: "missing risk assessments", count: data.missingRiskAssessments.length },
     { label: "agreement", plural: "agreements", suffix: "expiring soon", count: data.expiringSoon.length },
+    { label: "client", plural: "clients", suffix: "without a service agreement", count: data.clientsWithoutAgreement.length },
+    { label: "agreement", plural: "agreements", suffix: "unsigned", count: data.unsignedAgreements.length },
     { label: "consent record", plural: "consent records", suffix: "12m+ old", count: data.expiredConsents.length },
     { label: "client", plural: "clients", suffix: "missing required consent", count: data.missingConsents.length },
   ].filter((c) => c.count > 0);
