@@ -71,6 +71,64 @@ const INDUCTION_SCHEMA = z.object({
 
 type InductionForm = z.infer<typeof INDUCTION_SCHEMA>;
 
+// ── Defaults ─────────────────────────────────────────────────────────────────
+
+const DEFAULT_CHECKLIST: { item: string; completed: boolean; date: string }[] = [
+  // Pre-employment — must be complete before or on day 1
+  { item: "Right to work documents verified", completed: false, date: "" },
+  { item: "PVG / Disclosure Scotland check completed", completed: false, date: "" },
+  // Day 1 — paperwork & welcome
+  { item: "Contract of employment signed", completed: false, date: "" },
+  { item: "Welcome meeting and team introductions", completed: false, date: "" },
+  { item: "Workplace tour and orientation", completed: false, date: "" },
+  { item: "Uniform, dress code and PPE issued", completed: false, date: "" },
+  { item: "Employee handbook reviewed and signed", completed: false, date: "" },
+  { item: "Confidentiality and data protection agreement signed", completed: false, date: "" },
+  // First week — safety & compliance
+  { item: "Health and safety induction completed", completed: false, date: "" },
+  { item: "Fire safety and evacuation procedures", completed: false, date: "" },
+  { item: "Lone worker policy explained and agreed", completed: false, date: "" },
+  { item: "Incident, accident and near-miss reporting explained", completed: false, date: "" },
+  { item: "Complaints and whistleblowing procedures explained", completed: false, date: "" },
+  // Practical onboarding
+  { item: "IT systems and electronic care records training", completed: false, date: "" },
+  { item: "Shadow shifts with experienced staff completed", completed: false, date: "" },
+  // Regulatory — 3-month deadline
+  { item: "SSSC registration application submitted (within 3 months)", completed: false, date: "" },
+  // Care Certificate — all 16 standards (2025)
+  { item: "Care Certificate Standard 1: Understand your role", completed: false, date: "" },
+  { item: "Care Certificate Standard 2: Your personal development", completed: false, date: "" },
+  { item: "Care Certificate Standard 3: Duty of care", completed: false, date: "" },
+  { item: "Care Certificate Standard 4: Equality, diversity, inclusion and human rights", completed: false, date: "" },
+  { item: "Care Certificate Standard 5: Work in a person-centred way", completed: false, date: "" },
+  { item: "Care Certificate Standard 6: Communication", completed: false, date: "" },
+  { item: "Care Certificate Standard 7: Privacy and dignity", completed: false, date: "" },
+  { item: "Care Certificate Standard 8: Fluids and nutrition", completed: false, date: "" },
+  { item: "Care Certificate Standard 9: Awareness of mental health and dementia", completed: false, date: "" },
+  { item: "Care Certificate Standard 10: Adult safeguarding", completed: false, date: "" },
+  { item: "Care Certificate Standard 11: Safeguarding children", completed: false, date: "" },
+  { item: "Care Certificate Standard 12: Basic life support", completed: false, date: "" },
+  { item: "Care Certificate Standard 13: Health and safety", completed: false, date: "" },
+  { item: "Care Certificate Standard 14: Handling information", completed: false, date: "" },
+  { item: "Care Certificate Standard 15: Infection prevention and control", completed: false, date: "" },
+  { item: "Care Certificate Standard 16: Awareness of learning disability and autism", completed: false, date: "" },
+];
+
+const DEFAULT_COMPETENCIES: { area: string; date: string; passed: boolean }[] = [
+  { area: "Moving and assisting / manual handling", date: "", passed: false },
+  { area: "Medication administration and management", date: "", passed: false },
+  { area: "Infection prevention, control and hand hygiene", date: "", passed: false },
+  { area: "Basic life support and CPR", date: "", passed: false },
+  { area: "Fire safety and emergency procedures", date: "", passed: false },
+  { area: "Safeguarding adults from abuse or neglect", date: "", passed: false },
+  { area: "Person-centred care and support planning", date: "", passed: false },
+  { area: "Communication and accurate record-keeping", date: "", passed: false },
+  { area: "Lone working and personal safety", date: "", passed: false },
+  { area: "Risk assessment and management", date: "", passed: false },
+  { area: "Personal care and promoting dignity", date: "", passed: false },
+  { area: "Food hygiene and nutrition support", date: "", passed: false },
+];
+
 // ── Dialog ───────────────────────────────────────────────────────────────────
 
 function InductionDialog({
@@ -96,12 +154,12 @@ function InductionDialog({
       mentorId: editing?.mentorId ?? "",
       shadowShiftsCompleted: editing ? String(editing.shadowShiftsCompleted) : "0",
       probationReviewNotes: editing?.probationReviewNotes ?? "",
-      competencyAssessments: existingCompetencies.map((c) => ({
-        area: c.area, date: c.date ?? "", passed: c.passed,
-      })),
-      checklistItems: existingChecklist.map((c) => ({
-        item: c.item, completed: c.completed, date: c.date ?? "",
-      })),
+      competencyAssessments: editing
+        ? existingCompetencies.map((c) => ({ area: c.area, date: c.date ?? "", passed: c.passed }))
+        : DEFAULT_COMPETENCIES,
+      checklistItems: editing
+        ? existingChecklist.map((c) => ({ item: c.item, completed: c.completed, date: c.date ?? "" }))
+        : DEFAULT_CHECKLIST,
     },
   });
 
@@ -145,9 +203,10 @@ function InductionDialog({
   const isPending = createMut.isPending || updateMut.isPending;
   const mentors = staffList?.items?.filter((s) => s.id !== staffMemberId) ?? [];
 
+  // This is a really wide modal because of the long titles of each item. This is fine here
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-6xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{editing ? "Edit Induction" : "Start Induction"}</DialogTitle>
         </DialogHeader>

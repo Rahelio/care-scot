@@ -15,9 +15,6 @@
     "db:reset": "prisma migrate reset --force && tsx scripts/seed.ts",
     "db:setup-prod": "tsx scripts/setup-production.ts"
   },
-  "prisma": {
-    "seed": "tsx scripts/seed.ts"
-  },
   "dependencies": {
     "@auth/prisma-adapter": "^2.11.1",
     "@hookform/resolvers": "^5.2.2",

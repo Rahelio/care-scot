@@ -1,9 +1,23 @@
 "use client";
 
+import Link from "next/link";
 import { CheckCircle2, Circle } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
+
+function getCheckHref(label: string, staffId: string): string {
+  const base = `/staff/${staffId}`;
+  if (label.startsWith("Mandatory training")) return `${base}/training`;
+  if (label.includes("Personal details")) return `${base}/edit`;
+  if (label.includes("Right to work")) return `${base}/edit`;
+  if (label.includes("PVG")) return `${base}/pvg`;
+  if (label.includes("SSSC") || label.includes("registration")) return `${base}/pvg`;
+  if (label.includes("references")) return `${base}/pvg`;
+  if (label.includes("Health declaration")) return `${base}/health`;
+  if (label.includes("Induction")) return `${base}/induction`;
+  return base;
+}
 
 interface RecruitmentChecklistProps {
   staffId: string;
@@ -59,9 +73,13 @@ export function RecruitmentChecklist({ staffId }: RecruitmentChecklistProps) {
           />
         </div>
       </CardHeader>
-      <CardContent className="space-y-2">
+      <CardContent className="space-y-1">
         {checks.map((check) => (
-          <div key={check.label} className="flex items-center gap-2.5 text-sm">
+          <Link
+            key={check.label}
+            href={getCheckHref(check.label, staffId)}
+            className="flex items-center gap-2.5 text-sm rounded-md px-2 -mx-2 py-1 hover:bg-muted/60 transition-colors"
+          >
             {check.complete ? (
               <CheckCircle2 className="h-4 w-4 shrink-0 text-green-600" />
             ) : (
@@ -77,7 +95,7 @@ export function RecruitmentChecklist({ staffId }: RecruitmentChecklistProps) {
             <span className="ml-auto text-xs text-muted-foreground">
               {check.weight}%
             </span>
-          </div>
+          </Link>
         ))}
       </CardContent>
     </Card>
