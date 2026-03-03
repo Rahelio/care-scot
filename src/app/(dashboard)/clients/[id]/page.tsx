@@ -5,6 +5,8 @@ import { trpc } from "@/lib/trpc";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { ContactList } from "@/components/modules/clients/contact-list";
+import { AssignedStaffList } from "@/components/modules/clients/assigned-staff-list";
+import { HcpList } from "@/components/modules/clients/hcp-list";
 import { formatDate } from "@/lib/utils";
 
 export default function ClientPersonalInfoPage({
@@ -125,27 +127,13 @@ export default function ClientPersonalInfoPage({
 
       <ContactList serviceUserId={id} contacts={client.contacts} />
 
-      {client.healthcareProfessionals.length > 0 && (
-        <>
-          <Separator />
-          <div className="space-y-3">
-            <h3 className="font-medium">Healthcare Professionals</h3>
-            <div className="grid gap-3 sm:grid-cols-2">
-              {client.healthcareProfessionals.map((hp) => (
-                <Card key={hp.id}>
-                  <CardContent className="p-4 text-sm space-y-1">
-                    <p className="font-medium">{hp.professionalName}</p>
-                    {hp.role && <p className="text-muted-foreground">{hp.role}</p>}
-                    {hp.organisation && <p className="text-muted-foreground">{hp.organisation}</p>}
-                    {hp.phone && <p>{hp.phone}</p>}
-                    {hp.email && <p className="text-muted-foreground">{hp.email}</p>}
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          </div>
-        </>
-      )}
+      <Separator />
+
+      <AssignedStaffList serviceUserId={id} />
+
+      <Separator />
+
+      <HcpList serviceUserId={id} />
     </div>
   );
 }

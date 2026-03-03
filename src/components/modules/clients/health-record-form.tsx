@@ -30,6 +30,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import type { HealthRecord } from "@prisma/client";
 
 const RECORD_TYPES = [
   { value: "MEDICAL_HISTORY", label: "Medical History" },
@@ -62,6 +63,7 @@ type FormValues = z.infer<typeof schema>;
 interface HealthRecordFormProps {
   serviceUserId: string;
   initialRecordType?: string;
+  record?: HealthRecord;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSuccess: () => void;
@@ -70,11 +72,13 @@ interface HealthRecordFormProps {
 export function HealthRecordForm({
   serviceUserId,
   initialRecordType,
+  record,
   open,
   onOpenChange,
   onSuccess,
 }: HealthRecordFormProps) {
   const utils = trpc.useUtils();
+  const isEditMode = !!record;
 
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
@@ -86,12 +90,22 @@ export function HealthRecordForm({
   });
 
   useEffect(() => {
-    if (open && initialRecordType) {
-      form.setValue("recordType", initialRecordType);
+    if (open) {
+      if (record) {
+        form.reset({
+          recordType: record.recordType,
+          title: record.title,
+          description: record.description ?? "",
+          severity: record.severity ?? "",
+          recordedDate: new Date(record.recordedDate).toISOString().split("T")[0],
+        });
+      } else if (initialRecordType) {
+        form.setValue("recordType", initialRecordType);
+      }
     }
-  }, [open, initialRecordType, form]);
+  }, [open, record, initialRecordType, form]);
 
-  const mutation = trpc.clients.createHealthRecord.useMutation({
+  const createMut = trpc.clients.createHealthRecord.useMutation({
     onSuccess: () => {
       toast.success("Health record added");
       utils.clients.listHealthRecords.invalidate({ serviceUserId });
@@ -102,23 +116,45 @@ export function HealthRecordForm({
     onError: (err) => toast.error(err.message),
   });
 
+  const updateMut = trpc.clients.updateHealthRecord.useMutation({
+    onSuccess: () => {
+      toast.success("Health record updated");
+      utils.clients.listHealthRecords.invalidate({ serviceUserId });
+      form.reset();
+      onOpenChange(false);
+      onSuccess();
+    },
+    onError: (err) => toast.error(err.message),
+  });
+
   const recordType = form.watch("recordType");
   const showSeverity = recordType === "ALLERGY" || recordType === "DIAGNOSIS";
+  const isPending = createMut.isPending || updateMut.isPending;
 
   function onSubmit(values: FormValues) {
-    mutation.mutate({
-      serviceUserId,
-      ...values,
-      recordedDate: new Date(values.recordedDate),
-      severity: values.severity || undefined,
-    });
+    if (isEditMode && record) {
+      updateMut.mutate({
+        id: record.id,
+        title: values.title,
+        description: values.description || undefined,
+        severity: values.severity || undefined,
+        recordedDate: new Date(values.recordedDate),
+      });
+    } else {
+      createMut.mutate({
+        serviceUserId,
+        ...values,
+        recordedDate: new Date(values.recordedDate),
+        severity: values.severity || undefined,
+      });
+    }
   }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>Add Health Record</DialogTitle>
+          <DialogTitle>{isEditMode ? "Edit Health Record" : "Add Health Record"}</DialogTitle>
         </DialogHeader>
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
@@ -128,7 +164,11 @@ export function HealthRecordForm({
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Record Type *</FormLabel>
-                  <Select value={field.value} onValueChange={field.onChange}>
+                  <Select
+                    value={field.value}
+                    onValueChange={field.onChange}
+                    disabled={isEditMode}
+                  >
                     <FormControl>
                       <SelectTrigger>
                         <SelectValue placeholder="Select type…" />
@@ -216,12 +256,12 @@ export function HealthRecordForm({
                 type="button"
                 variant="outline"
                 onClick={() => onOpenChange(false)}
-                disabled={mutation.isPending}
+                disabled={isPending}
               >
                 Cancel
               </Button>
-              <Button type="submit" disabled={mutation.isPending}>
-                {mutation.isPending ? "Saving…" : "Add Record"}
+              <Button type="submit" disabled={isPending}>
+                {isPending ? "Saving…" : isEditMode ? "Save Changes" : "Add Record"}
               </Button>
             </div>
           </form>

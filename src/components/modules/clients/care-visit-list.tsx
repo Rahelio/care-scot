@@ -2,13 +2,13 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Plus, CheckCircle, XCircle, Pencil, Lock } from "lucide-react";
+import { Plus, CheckCircle, XCircle, Pencil, Lock, Clock } from "lucide-react";
 import { useSession } from "next-auth/react";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
-import { formatDate } from "@/lib/utils";
+import { formatDate, formatDuration } from "@/lib/utils";
 
 const MANAGER_ROLES = ["MANAGER", "ORG_ADMIN", "SUPER_ADMIN"];
 const PAGE_SIZE = 10;
@@ -108,7 +108,7 @@ export function CareVisitList({ serviceUserId }: CareVisitListProps) {
                       </div>
 
                       <div className="flex items-center gap-3 text-sm text-muted-foreground flex-wrap">
-                        <span>
+                        <span className="flex items-center gap-1 flex-wrap">
                           {new Date(visit.scheduledStart).toLocaleTimeString("en-GB", {
                             hour: "2-digit",
                             minute: "2-digit",
@@ -119,9 +119,13 @@ export function CareVisitList({ serviceUserId }: CareVisitListProps) {
                             minute: "2-digit",
                           })}{" "}
                           <span className="text-xs">(scheduled)</span>
+                          <span className="flex items-center gap-0.5 text-xs text-muted-foreground/70 ml-1">
+                            <Clock className="h-3 w-3" />
+                            {formatDuration(new Date(visit.scheduledStart), new Date(visit.scheduledEnd))}
+                          </span>
                         </span>
                         {visit.actualStart && visit.actualEnd && (
-                          <span>
+                          <span className="flex items-center gap-1 flex-wrap">
                             {new Date(visit.actualStart).toLocaleTimeString("en-GB", {
                               hour: "2-digit",
                               minute: "2-digit",
@@ -132,6 +136,10 @@ export function CareVisitList({ serviceUserId }: CareVisitListProps) {
                               minute: "2-digit",
                             })}{" "}
                             <span className="text-xs">(actual)</span>
+                            <span className="flex items-center gap-0.5 text-xs text-muted-foreground/70 ml-1">
+                              <Clock className="h-3 w-3" />
+                              {formatDuration(new Date(visit.actualStart), new Date(visit.actualEnd))}
+                            </span>
                           </span>
                         )}
                       </div>

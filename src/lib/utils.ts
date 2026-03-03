@@ -35,3 +35,11 @@ export function formatCurrency(
     currency,
   }).format(value);
 }
+
+export function formatDuration(start: Date, end: Date): string {
+  const minutes = Math.max(0, Math.round((end.getTime() - start.getTime()) / 60000));
+  if (minutes < 60) return `${minutes} min`;
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return m === 0 ? `${h}h` : `${h}h ${m}m`;
+}

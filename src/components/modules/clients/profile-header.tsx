@@ -3,6 +3,7 @@ import { ChevronRight, Edit, Calendar, Hash } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "./status-badge";
 import { PlanWarningBanner } from "./plan-warning-banner";
+import { StatusChangeButton } from "./status-change-button";
 import { getPlanWarningStatus } from "@/lib/plan-warning";
 import { formatDate } from "@/lib/utils";
 import type { ServiceUserStatus } from "@prisma/client";
@@ -56,12 +57,15 @@ export function ProfileHeader({ client }: ProfileHeaderProps) {
             )}
           </div>
         </div>
-        <Button variant="outline" size="sm" asChild>
-          <Link href={`/clients/${client.id}/edit`}>
-            <Edit className="h-4 w-4 mr-1.5" />
-            Edit
-          </Link>
-        </Button>
+        <div className="flex items-center gap-2">
+          <StatusChangeButton clientId={client.id} currentStatus={client.status} />
+          <Button variant="outline" size="sm" asChild>
+            <Link href={`/clients/${client.id}/edit`}>
+              <Edit className="h-4 w-4 mr-1.5" />
+              Edit
+            </Link>
+          </Button>
+        </div>
       </div>
 
       {warning.level !== "none" && (

@@ -1,13 +1,21 @@
 "use client";
 
 import { use, useState } from "react";
-import { Plus, AlertTriangle, Activity } from "lucide-react";
+import { Plus, AlertTriangle, Activity, Pencil, Trash2 } from "lucide-react";
+import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { HealthRecordForm } from "@/components/modules/clients/health-record-form";
 import { formatDate } from "@/lib/utils";
+import type { HealthRecord } from "@prisma/client";
 
 const RECORD_TYPE_LABELS: Record<string, string> = {
   MEDICAL_HISTORY: "Medical History",
@@ -54,11 +62,24 @@ export default function HealthPage({
   const { id } = use(params);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [initialRecordType, setInitialRecordType] = useState<string | undefined>();
+  const [editRecord, setEditRecord] = useState<HealthRecord | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; title: string } | null>(null);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [typeFilter, setTypeFilter] = useState("");
   const utils = trpc.useUtils();
 
   const { data: allRecords, isPending } = trpc.clients.listHealthRecords.useQuery({
     serviceUserId: id,
+  });
+
+  const deleteMut = trpc.clients.deleteHealthRecord.useMutation({
+    onSuccess: () => {
+      toast.success("Health record deleted");
+      utils.clients.listHealthRecords.invalidate({ serviceUserId: id });
+      setDeleteDialogOpen(false);
+      setDeleteTarget(null);
+    },
+    onError: (err) => toast.error(err.message),
   });
 
   if (isPending) {
@@ -72,8 +93,20 @@ export default function HealthPage({
     : (allRecords ?? []);
 
   function openForm(type?: string) {
+    setEditRecord(null);
     setInitialRecordType(type);
     setDialogOpen(true);
+  }
+
+  function openEdit(record: HealthRecord) {
+    setInitialRecordType(undefined);
+    setEditRecord(record);
+    setDialogOpen(true);
+  }
+
+  function openDelete(record: { id: string; title: string }) {
+    setDeleteTarget(record);
+    setDeleteDialogOpen(true);
   }
 
   return (
@@ -129,6 +162,20 @@ export default function HealthPage({
                       {SEVERITY_LABELS[a.severity] ?? a.severity}
                     </Badge>
                   )}
+                  <button
+                    onClick={() => openEdit(a)}
+                    className="ml-1 text-muted-foreground hover:text-foreground transition-colors"
+                    title="Edit"
+                  >
+                    <Pencil className="h-3 w-3" />
+                  </button>
+                  <button
+                    onClick={() => openDelete({ id: a.id, title: a.title })}
+                    className="text-muted-foreground hover:text-destructive transition-colors"
+                    title="Delete"
+                  >
+                    <Trash2 className="h-3 w-3" />
+                  </button>
                 </div>
               ))}
             </div>
@@ -178,9 +225,22 @@ export default function HealthPage({
                       <p className="text-xs text-muted-foreground">{c.description}</p>
                     )}
                   </div>
-                  <span className="text-xs text-muted-foreground shrink-0">
-                    {formatDate(c.recordedDate)}
-                  </span>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <span className="text-xs text-muted-foreground">
+                      {formatDate(c.recordedDate)}
+                    </span>
+                    <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => openEdit(c)}>
+                      <Pencil className="h-3 w-3" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-6 w-6 text-muted-foreground hover:text-destructive"
+                      onClick={() => openDelete({ id: c.id, title: c.title })}
+                    >
+                      <Trash2 className="h-3 w-3" />
+                    </Button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -245,9 +305,22 @@ export default function HealthPage({
                         <p className="text-sm text-muted-foreground">{record.description}</p>
                       )}
                     </div>
-                    <span className="text-xs text-muted-foreground shrink-0">
-                      {formatDate(record.recordedDate)}
-                    </span>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <span className="text-xs text-muted-foreground">
+                        {formatDate(record.recordedDate)}
+                      </span>
+                      <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => openEdit(record)}>
+                        <Pencil className="h-3 w-3" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6 text-muted-foreground hover:text-destructive"
+                        onClick={() => openDelete({ id: record.id, title: record.title })}
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </Button>
+                    </div>
                   </div>
                 </CardContent>
               </Card>
@@ -259,10 +332,44 @@ export default function HealthPage({
       <HealthRecordForm
         serviceUserId={id}
         initialRecordType={initialRecordType}
+        record={editRecord ?? undefined}
         open={dialogOpen}
-        onOpenChange={setDialogOpen}
+        onOpenChange={(open) => {
+          setDialogOpen(open);
+          if (!open) setEditRecord(null);
+        }}
         onSuccess={() => utils.clients.listHealthRecords.invalidate({ serviceUserId: id })}
       />
+
+      {/* Delete confirmation dialog */}
+      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Delete Health Record</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            Are you sure you want to delete{" "}
+            <strong className="text-foreground">{deleteTarget?.title}</strong>? This cannot be
+            undone.
+          </p>
+          <div className="flex justify-end gap-3 mt-2">
+            <Button
+              variant="outline"
+              onClick={() => setDeleteDialogOpen(false)}
+              disabled={deleteMut.isPending}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={deleteMut.isPending}
+              onClick={() => deleteTarget && deleteMut.mutate({ id: deleteTarget.id })}
+            >
+              {deleteMut.isPending ? "Deleting…" : "Delete"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

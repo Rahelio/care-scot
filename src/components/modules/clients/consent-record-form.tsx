@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Badge } from "@/components/ui/badge";
 import {
   Form,
   FormControl,
@@ -32,7 +33,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import type { ConsentType } from "@prisma/client";
+import type { ConsentRecord, ConsentType } from "@prisma/client";
 
 const CONSENT_TYPE_LABELS: Record<ConsentType, string> = {
   CARE_AND_SUPPORT: "Care and Support",
@@ -60,6 +61,7 @@ type FormValues = z.infer<typeof schema>;
 interface ConsentRecordFormProps {
   serviceUserId: string;
   initialConsentType?: ConsentType;
+  record?: ConsentRecord;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSuccess: () => void;
@@ -68,11 +70,13 @@ interface ConsentRecordFormProps {
 export function ConsentRecordForm({
   serviceUserId,
   initialConsentType,
+  record,
   open,
   onOpenChange,
   onSuccess,
 }: ConsentRecordFormProps) {
   const utils = trpc.useUtils();
+  const isEditMode = !!record;
 
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
@@ -84,14 +88,30 @@ export function ConsentRecordForm({
     },
   });
 
-  // Sync initialConsentType when dialog opens
   useEffect(() => {
-    if (open && initialConsentType) {
-      form.setValue("consentType", initialConsentType);
+    if (open) {
+      if (record) {
+        form.reset({
+          consentType: record.consentType,
+          consentGiven: record.consentGiven,
+          capacityAssessed: record.capacityAssessed,
+          capacityOutcome: record.capacityOutcome ?? "",
+          awiDocumentation: record.awiDocumentation ?? "",
+          bestInterestDecision: record.bestInterestDecision ?? "",
+          signedBy: record.signedBy ?? "",
+          relationshipToServiceUser: record.relationshipToServiceUser ?? "",
+          consentDate: new Date(record.consentDate).toISOString().split("T")[0],
+          reviewDate: record.reviewDate
+            ? new Date(record.reviewDate).toISOString().split("T")[0]
+            : "",
+        });
+      } else if (initialConsentType) {
+        form.setValue("consentType", initialConsentType);
+      }
     }
-  }, [open, initialConsentType, form]);
+  }, [open, record, initialConsentType, form]);
 
-  const mutation = trpc.clients.createConsentRecord.useMutation({
+  const createMut = trpc.clients.createConsentRecord.useMutation({
     onSuccess: () => {
       toast.success("Consent record saved");
       utils.clients.listConsentRecords.invalidate({ serviceUserId });
@@ -102,66 +122,118 @@ export function ConsentRecordForm({
     onError: (err) => toast.error(err.message),
   });
 
+  const updateMut = trpc.clients.updateConsentRecord.useMutation({
+    onSuccess: () => {
+      toast.success("Consent record updated");
+      utils.clients.listConsentRecords.invalidate({ serviceUserId });
+      form.reset();
+      onOpenChange(false);
+      onSuccess();
+    },
+    onError: (err) => toast.error(err.message),
+  });
+
   const capacityAssessed = form.watch("capacityAssessed");
+  const isPending = createMut.isPending || updateMut.isPending;
 
   function onSubmit(values: FormValues) {
-    mutation.mutate({
-      serviceUserId,
-      ...values,
-      consentType: values.consentType as ConsentType,
-      consentDate: new Date(values.consentDate),
-      reviewDate: values.reviewDate ? new Date(values.reviewDate) : undefined,
-    });
+    if (isEditMode && record) {
+      updateMut.mutate({
+        id: record.id,
+        signedBy: values.signedBy || undefined,
+        relationshipToServiceUser: values.relationshipToServiceUser || undefined,
+        consentDate: new Date(values.consentDate),
+        reviewDate: values.reviewDate ? new Date(values.reviewDate) : undefined,
+        capacityAssessed: values.capacityAssessed,
+        capacityOutcome: values.capacityOutcome || undefined,
+        awiDocumentation: values.awiDocumentation || undefined,
+        bestInterestDecision: values.bestInterestDecision || undefined,
+      });
+    } else {
+      createMut.mutate({
+        serviceUserId,
+        ...values,
+        consentType: values.consentType as ConsentType,
+        consentDate: new Date(values.consentDate),
+        reviewDate: values.reviewDate ? new Date(values.reviewDate) : undefined,
+      });
+    }
   }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-lg">
         <DialogHeader>
-          <DialogTitle>Record Consent</DialogTitle>
+          <DialogTitle>{isEditMode ? "Edit Consent Record" : "Record Consent"}</DialogTitle>
         </DialogHeader>
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-            <FormField
-              control={form.control}
-              name="consentType"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Consent Type *</FormLabel>
-                  <Select value={field.value} onValueChange={field.onChange}>
-                    <FormControl>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select type…" />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      {Object.entries(CONSENT_TYPE_LABELS).map(([value, label]) => (
-                        <SelectItem key={value} value={value}>
-                          {label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+            {isEditMode ? (
+              <div className="space-y-1">
+                <p className="text-sm font-medium">Consent Type</p>
+                <div className="flex items-center gap-2">
+                  <Badge variant="outline">
+                    {CONSENT_TYPE_LABELS[record!.consentType]}
+                  </Badge>
+                  <Badge
+                    variant="outline"
+                    className={
+                      record!.consentGiven
+                        ? "bg-green-100 text-green-800 border-green-200"
+                        : "bg-red-100 text-red-800 border-red-200"
+                    }
+                  >
+                    {record!.consentGiven ? "Given" : "Withheld"}
+                  </Badge>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Consent type and decision are immutable.
+                </p>
+              </div>
+            ) : (
+              <>
+                <FormField
+                  control={form.control}
+                  name="consentType"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Consent Type *</FormLabel>
+                      <Select value={field.value} onValueChange={field.onChange}>
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select type…" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {Object.entries(CONSENT_TYPE_LABELS).map(([value, label]) => (
+                            <SelectItem key={value} value={value}>
+                              {label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
 
-            <FormField
-              control={form.control}
-              name="consentGiven"
-              render={({ field }) => (
-                <FormItem className="flex flex-row items-center gap-3 space-y-0">
-                  <FormControl>
-                    <Checkbox checked={field.value} onCheckedChange={field.onChange} />
-                  </FormControl>
-                  <div>
-                    <FormLabel className="font-normal">Consent given</FormLabel>
-                    <FormDescription>Uncheck if consent was withheld or withdrawn</FormDescription>
-                  </div>
-                </FormItem>
-              )}
-            />
+                <FormField
+                  control={form.control}
+                  name="consentGiven"
+                  render={({ field }) => (
+                    <FormItem className="flex flex-row items-center gap-3 space-y-0">
+                      <FormControl>
+                        <Checkbox checked={field.value} onCheckedChange={field.onChange} />
+                      </FormControl>
+                      <div>
+                        <FormLabel className="font-normal">Consent given</FormLabel>
+                        <FormDescription>Uncheck if consent was withheld or withdrawn</FormDescription>
+                      </div>
+                    </FormItem>
+                  )}
+                />
+              </>
+            )}
 
             <div className="grid grid-cols-2 gap-4">
               <FormField
@@ -286,12 +358,12 @@ export function ConsentRecordForm({
                 type="button"
                 variant="outline"
                 onClick={() => onOpenChange(false)}
-                disabled={mutation.isPending}
+                disabled={isPending}
               >
                 Cancel
               </Button>
-              <Button type="submit" disabled={mutation.isPending}>
-                {mutation.isPending ? "Saving…" : "Save Consent Record"}
+              <Button type="submit" disabled={isPending}>
+                {isPending ? "Saving…" : isEditMode ? "Save Changes" : "Save Consent Record"}
               </Button>
             </div>
           </form>

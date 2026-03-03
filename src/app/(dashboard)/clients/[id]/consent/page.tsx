@@ -1,14 +1,21 @@
 "use client";
 
 import { use, useState } from "react";
-import { Plus, CheckCircle, XCircle, AlertCircle } from "lucide-react";
+import { Plus, CheckCircle, XCircle, AlertCircle, Pencil, Trash2 } from "lucide-react";
+import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { ConsentRecordForm } from "@/components/modules/clients/consent-record-form";
 import { formatDate } from "@/lib/utils";
-import type { ConsentType } from "@prisma/client";
+import type { ConsentRecord, ConsentType } from "@prisma/client";
 
 const CONSENT_TYPES: { value: ConsentType; label: string; description: string }[] = [
   {
@@ -46,10 +53,23 @@ export default function ConsentPage({
   const { id } = use(params);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [selectedType, setSelectedType] = useState<ConsentType | undefined>();
+  const [editRecord, setEditRecord] = useState<ConsentRecord | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; type: string } | null>(null);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const utils = trpc.useUtils();
 
   const { data: records, isPending } = trpc.clients.listConsentRecords.useQuery({
     serviceUserId: id,
+  });
+
+  const deleteMut = trpc.clients.deleteConsentRecord.useMutation({
+    onSuccess: () => {
+      toast.success("Consent record deleted");
+      utils.clients.listConsentRecords.invalidate({ serviceUserId: id });
+      setDeleteDialogOpen(false);
+      setDeleteTarget(null);
+    },
+    onError: (err) => toast.error(err.message),
   });
 
   if (isPending) {
@@ -67,19 +87,26 @@ export default function ConsentPage({
   ) as Record<ConsentType, typeof records>;
 
   function openForm(type?: ConsentType) {
+    setEditRecord(null);
     setSelectedType(type);
     setDialogOpen(true);
+  }
+
+  function openEdit(record: ConsentRecord) {
+    setSelectedType(undefined);
+    setEditRecord(record);
+    setDialogOpen(true);
+  }
+
+  function openDelete(record: ConsentRecord, label: string) {
+    setDeleteTarget({ id: record.id, type: label });
+    setDeleteDialogOpen(true);
   }
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-lg font-semibold">Consent Records</h2>
-          <p className="text-sm text-muted-foreground mt-0.5">
-            Consent records cannot be deleted — only superseded by a new record
-          </p>
-        </div>
+        <h2 className="text-lg font-semibold">Consent Records</h2>
         <Button onClick={() => openForm()}>
           <Plus className="h-4 w-4 mr-2" />
           Record Consent
@@ -172,19 +199,49 @@ export default function ConsentPage({
                         {typeRecords.length > 2 ? "s" : ""}
                       </p>
                     )}
+                    <div className="flex gap-2 pt-1">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="flex-1"
+                        onClick={() => openForm(value)}
+                      >
+                        <Plus className="h-3 w-3 mr-1" />
+                        Supersede
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => openEdit(current)}
+                        title="Edit"
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="text-muted-foreground hover:text-destructive hover:border-destructive"
+                        onClick={() => openDelete(current, label)}
+                        title="Delete"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
                   </>
                 ) : (
-                  <p className="text-xs text-muted-foreground">{description}</p>
+                  <>
+                    <p className="text-xs text-muted-foreground">{description}</p>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="w-full mt-2"
+                      onClick={() => openForm(value)}
+                    >
+                      <Plus className="h-3 w-3 mr-1" />
+                      Record
+                    </Button>
+                  </>
                 )}
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="w-full mt-2"
-                  onClick={() => openForm(value)}
-                >
-                  <Plus className="h-3 w-3 mr-1" />
-                  {current ? "Supersede" : "Record"}
-                </Button>
               </CardContent>
             </Card>
           );
@@ -194,10 +251,44 @@ export default function ConsentPage({
       <ConsentRecordForm
         serviceUserId={id}
         initialConsentType={selectedType}
+        record={editRecord ?? undefined}
         open={dialogOpen}
-        onOpenChange={setDialogOpen}
+        onOpenChange={(open) => {
+          setDialogOpen(open);
+          if (!open) setEditRecord(null);
+        }}
         onSuccess={() => utils.clients.listConsentRecords.invalidate({ serviceUserId: id })}
       />
+
+      {/* Delete confirmation dialog */}
+      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Delete Consent Record</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            Are you sure you want to delete the{" "}
+            <strong className="text-foreground">{deleteTarget?.type}</strong> consent record? This
+            cannot be undone.
+          </p>
+          <div className="flex justify-end gap-3 mt-2">
+            <Button
+              variant="outline"
+              onClick={() => setDeleteDialogOpen(false)}
+              disabled={deleteMut.isPending}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={deleteMut.isPending}
+              onClick={() => deleteTarget && deleteMut.mutate({ id: deleteTarget.id })}
+            >
+              {deleteMut.isPending ? "Deleting…" : "Delete"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

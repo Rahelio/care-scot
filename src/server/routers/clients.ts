@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { router, protectedProcedure } from "../trpc";
-import { ServiceUserStatus, RiskAssessmentType, RiskLevel, ConsentType } from "@prisma/client";
+import { ServiceUserStatus, RiskAssessmentType, RiskLevel, ConsentType, StaffAssignmentRole } from "@prisma/client";
 import { TRPCError } from "@trpc/server";
 import { createAuditLog } from "../middleware/audit";
 
@@ -36,7 +36,7 @@ export const clientsRouter = router({
         }),
       };
 
-      const [items, total] = await Promise.all([
+      const [rawItems, total] = await Promise.all([
         ctx.prisma.serviceUser.findMany({
           where,
           skip,
@@ -52,10 +52,37 @@ export const clientsRouter = router({
             phonePrimary: true,
             status: true,
             createdAt: true,
+            _count: {
+              select: {
+                personalPlans: { where: { status: "ACTIVE" } },
+                consentRecords: true,
+                serviceAgreements: { where: { signedByServiceUser: true, signedByProvider: true } },
+              },
+            },
+            riskAssessments: {
+              where: { status: "ACTIVE" },
+              select: { assessmentType: true },
+            },
           },
         }),
         ctx.prisma.serviceUser.count({ where }),
       ]);
+
+      const items = rawItems.map(({ _count, riskAssessments, ...rest }) => {
+        const hasActivePlan = _count.personalPlans > 0;
+        const hasSignedAgreement = _count.serviceAgreements > 0;
+        const hasConsent = _count.consentRecords > 0;
+        const riskAssessmentCount = new Set(riskAssessments.map((r) => r.assessmentType)).size;
+        const score =
+          (hasActivePlan ? 1 : 0) +
+          (hasSignedAgreement ? 1 : 0) +
+          (hasConsent ? 1 : 0) +
+          (riskAssessmentCount === 9 ? 1 : 0);
+        return {
+          ...rest,
+          completeness: { hasActivePlan, hasSignedAgreement, hasConsent, riskAssessmentCount, score },
+        };
+      });
 
       return { items, total, page: input.page, limit: input.limit };
     }),
@@ -125,6 +152,20 @@ export const clientsRouter = router({
         id: string;
       };
       const data = { ...input, email: input.email || undefined };
+
+      if (input.chiNumber) {
+        const existing = await ctx.prisma.serviceUser.findFirst({
+          where: { organisationId, chiNumber: input.chiNumber },
+          select: { firstName: true, lastName: true },
+        });
+        if (existing) {
+          throw new TRPCError({
+            code: "CONFLICT",
+            message: `CHI number already assigned to ${existing.firstName} ${existing.lastName}`,
+          });
+        }
+      }
+
       return ctx.prisma.serviceUser.create({
         data: { ...data, organisationId, createdBy: userId, updatedBy: userId },
       });
@@ -187,6 +228,20 @@ export const clientsRouter = router({
         id: string;
       };
       const { id, email, ...rest } = input;
+
+      if (input.chiNumber) {
+        const existing = await ctx.prisma.serviceUser.findFirst({
+          where: { organisationId, chiNumber: input.chiNumber, NOT: { id } },
+          select: { firstName: true, lastName: true },
+        });
+        if (existing) {
+          throw new TRPCError({
+            code: "CONFLICT",
+            message: `CHI number already assigned to ${existing.firstName} ${existing.lastName}`,
+          });
+        }
+      }
+
       return ctx.prisma.serviceUser.update({
         where: { id, organisationId },
         data: { ...rest, email: email || undefined, updatedBy: userId },
@@ -1094,4 +1149,712 @@ export const clientsRouter = router({
         include: { staffMember: { select: { id: true, firstName: true, lastName: true } } },
       });
     }),
+
+  // ─────────────────────────────────────────
+  // CHI NUMBER DUPLICATE CHECK
+  // ─────────────────────────────────────────
+
+  checkChiNumber: protectedProcedure
+    .input(
+      z.object({
+        chiNumber: z.string().min(1),
+        excludeId: z.string().min(1).optional(),
+      })
+    )
+    .query(async ({ ctx, input }) => {
+      const { organisationId } = ctx.user as { organisationId: string };
+      const existing = await ctx.prisma.serviceUser.findFirst({
+        where: {
+          organisationId,
+          chiNumber: input.chiNumber,
+          ...(input.excludeId && { NOT: { id: input.excludeId } }),
+        },
+        select: { firstName: true, lastName: true },
+      });
+      if (!existing) return { duplicate: false as const };
+      return {
+        duplicate: true as const,
+        existingName: `${existing.firstName} ${existing.lastName}`,
+      };
+    }),
+
+  // ─────────────────────────────────────────
+  // HEALTH RECORD DELETE
+  // ─────────────────────────────────────────
+
+  deleteHealthRecord: protectedProcedure
+    .input(z.object({ id: z.string().min(1) }))
+    .mutation(async ({ ctx, input }) => {
+      const { organisationId } = ctx.user as { organisationId: string };
+      await ctx.prisma.healthRecord.findUniqueOrThrow({
+        where: { id: input.id, organisationId },
+      });
+      return ctx.prisma.healthRecord.delete({ where: { id: input.id } });
+    }),
+
+  // ─────────────────────────────────────────
+  // CONSENT RECORD UPDATE / DELETE
+  // ─────────────────────────────────────────
+
+  updateConsentRecord: protectedProcedure
+    .input(
+      z.object({
+        id: z.string().min(1),
+        signedBy: z.string().optional(),
+        relationshipToServiceUser: z.string().optional(),
+        consentDate: z.coerce.date().optional(),
+        reviewDate: z.coerce.date().optional(),
+        capacityAssessed: z.boolean().optional(),
+        capacityOutcome: z.string().optional(),
+        awiDocumentation: z.string().optional(),
+        bestInterestDecision: z.string().optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { organisationId, id: userId } = ctx.user as {
+        organisationId: string;
+        id: string;
+      };
+      const { id, ...data } = input;
+      await ctx.prisma.consentRecord.findUniqueOrThrow({
+        where: { id, organisationId },
+      });
+      return ctx.prisma.consentRecord.update({
+        where: { id },
+        data: { ...data, updatedBy: userId },
+      });
+    }),
+
+  deleteConsentRecord: protectedProcedure
+    .input(z.object({ id: z.string().min(1) }))
+    .mutation(async ({ ctx, input }) => {
+      const { organisationId } = ctx.user as { organisationId: string };
+      await ctx.prisma.consentRecord.findUniqueOrThrow({
+        where: { id: input.id, organisationId },
+      });
+      return ctx.prisma.consentRecord.delete({ where: { id: input.id } });
+    }),
+
+  // ─────────────────────────────────────────
+  // ASSIGNED STAFF (KEY WORKER / REGULAR CARER)
+  // ─────────────────────────────────────────
+
+  listAssignedStaff: protectedProcedure
+    .input(z.object({ serviceUserId: z.string().min(1) }))
+    .query(async ({ ctx, input }) => {
+      const { organisationId } = ctx.user as { organisationId: string };
+      return ctx.prisma.serviceUserStaff.findMany({
+        where: { serviceUserId: input.serviceUserId, organisationId },
+        orderBy: { createdAt: "asc" },
+        include: {
+          staffMember: {
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              jobTitle: true,
+              roleType: true,
+              status: true,
+            },
+          },
+        },
+      });
+    }),
+
+  assignStaff: protectedProcedure
+    .input(
+      z.object({
+        serviceUserId: z.string().min(1),
+        staffMemberId: z.string().min(1),
+        role: z.enum(["KEY_WORKER", "REGULAR_CARER"]),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { organisationId, id: userId } = ctx.user as {
+        organisationId: string;
+        id: string;
+      };
+      await ctx.prisma.staffMember.findUniqueOrThrow({
+        where: { id: input.staffMemberId, organisationId },
+      });
+      return ctx.prisma.serviceUserStaff.upsert({
+        where: {
+          serviceUserId_staffMemberId: {
+            serviceUserId: input.serviceUserId,
+            staffMemberId: input.staffMemberId,
+          },
+        },
+        update: { role: input.role as StaffAssignmentRole },
+        create: {
+          serviceUserId: input.serviceUserId,
+          staffMemberId: input.staffMemberId,
+          organisationId,
+          role: input.role as StaffAssignmentRole,
+          createdBy: userId,
+        },
+      });
+    }),
+
+  removeStaffAssignment: protectedProcedure
+    .input(z.object({ id: z.string().min(1) }))
+    .mutation(async ({ ctx, input }) => {
+      const { organisationId } = ctx.user as { organisationId: string };
+      await ctx.prisma.serviceUserStaff.findUniqueOrThrow({
+        where: { id: input.id, organisationId },
+      });
+      return ctx.prisma.serviceUserStaff.delete({ where: { id: input.id } });
+    }),
+
+  // ─────────────────────────────────────────
+  // SHARED HEALTHCARE PROFESSIONAL DIRECTORY
+  // ─────────────────────────────────────────
+
+  listSharedHCPs: protectedProcedure
+    .input(z.object({ search: z.string().optional() }))
+    .query(async ({ ctx, input }) => {
+      const { organisationId } = ctx.user as { organisationId: string };
+      return ctx.prisma.sharedHealthcareProfessional.findMany({
+        where: {
+          organisationId,
+          ...(input.search && {
+            OR: [
+              { professionalName: { contains: input.search, mode: "insensitive" as const } },
+              { role: { contains: input.search, mode: "insensitive" as const } },
+              { organisation: { contains: input.search, mode: "insensitive" as const } },
+            ],
+          }),
+        },
+        orderBy: { professionalName: "asc" },
+      });
+    }),
+
+  createSharedHCP: protectedProcedure
+    .input(
+      z.object({
+        professionalName: z.string().min(1),
+        role: z.string().optional(),
+        organisation: z.string().optional(),
+        phone: z.string().optional(),
+        email: z.string().email().optional().or(z.literal("")),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { organisationId, id: userId } = ctx.user as {
+        organisationId: string;
+        id: string;
+      };
+      return ctx.prisma.sharedHealthcareProfessional.create({
+        data: { ...input, email: input.email || undefined, organisationId, createdBy: userId },
+      });
+    }),
+
+  updateSharedHCP: protectedProcedure
+    .input(
+      z.object({
+        id: z.string().min(1),
+        professionalName: z.string().min(1).optional(),
+        role: z.string().optional(),
+        organisation: z.string().optional(),
+        phone: z.string().optional(),
+        email: z.string().email().optional().or(z.literal("")),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { organisationId } = ctx.user as { organisationId: string };
+      const { id, email, ...rest } = input;
+      await ctx.prisma.sharedHealthcareProfessional.findUniqueOrThrow({
+        where: { id, organisationId },
+      });
+      return ctx.prisma.sharedHealthcareProfessional.update({
+        where: { id },
+        data: { ...rest, email: email || undefined },
+      });
+    }),
+
+  listHealthcareProfessionals: protectedProcedure
+    .input(z.object({ serviceUserId: z.string().min(1) }))
+    .query(async ({ ctx, input }) => {
+      const { organisationId } = ctx.user as { organisationId: string };
+      return ctx.prisma.serviceUserHealthcareProfessional.findMany({
+        where: { serviceUserId: input.serviceUserId, organisationId },
+        orderBy: { createdAt: "asc" },
+        include: { sharedHcp: true },
+      });
+    }),
+
+  linkHCP: protectedProcedure
+    .input(
+      z.object({
+        serviceUserId: z.string().min(1),
+        sharedHcpId: z.string().optional(),
+        professionalName: z.string().min(1).optional(),
+        role: z.string().optional(),
+        organisation: z.string().optional(),
+        phone: z.string().optional(),
+        email: z.string().email().optional().or(z.literal("")),
+        notes: z.string().optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { organisationId, id: userId } = ctx.user as {
+        organisationId: string;
+        id: string;
+      };
+
+      let fields: {
+        professionalName: string;
+        role?: string;
+        organisation?: string;
+        phone?: string;
+        email?: string;
+      };
+
+      if (input.sharedHcpId) {
+        const shared = await ctx.prisma.sharedHealthcareProfessional.findUniqueOrThrow({
+          where: { id: input.sharedHcpId, organisationId },
+        });
+        fields = {
+          professionalName: shared.professionalName,
+          role: shared.role ?? undefined,
+          organisation: shared.organisation ?? undefined,
+          phone: shared.phone ?? undefined,
+          email: shared.email ?? undefined,
+        };
+      } else {
+        if (!input.professionalName) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "professionalName is required" });
+        }
+        fields = {
+          professionalName: input.professionalName,
+          role: input.role,
+          organisation: input.organisation,
+          phone: input.phone,
+          email: input.email || undefined,
+        };
+      }
+
+      return ctx.prisma.serviceUserHealthcareProfessional.create({
+        data: {
+          serviceUserId: input.serviceUserId,
+          organisationId,
+          sharedHcpId: input.sharedHcpId ?? null,
+          notes: input.notes,
+          createdBy: userId,
+          updatedBy: userId,
+          ...fields,
+        },
+      });
+    }),
+
+  // ─────────────────────────────────────────
+  // CLIENT TIMELINE
+  // ─────────────────────────────────────────
+
+  getTimeline: protectedProcedure
+    .input(
+      z.object({
+        serviceUserId: z.string().min(1),
+        limit: z.number().min(1).max(200).default(50),
+        offset: z.number().min(0).default(0),
+      })
+    )
+    .query(async ({ ctx, input }) => {
+      const { organisationId } = ctx.user as { organisationId: string };
+      const { serviceUserId } = input;
+
+      const [
+        careVisits,
+        personalPlans,
+        riskAssessments,
+        consentRecords,
+        reviews,
+        healthRecords,
+        incidents,
+      ] = await Promise.all([
+        ctx.prisma.careVisitRecord.findMany({
+          where: { serviceUserId, organisationId },
+          take: 100,
+          orderBy: { visitDate: "desc" },
+          include: { staffMember: { select: { firstName: true, lastName: true } } },
+        }),
+        ctx.prisma.personalPlan.findMany({
+          where: { serviceUserId, organisationId },
+          take: 100,
+          orderBy: { createdAt: "desc" },
+        }),
+        ctx.prisma.riskAssessment.findMany({
+          where: { serviceUserId, organisationId },
+          take: 100,
+          orderBy: { assessmentDate: "desc" },
+        }),
+        ctx.prisma.consentRecord.findMany({
+          where: { serviceUserId, organisationId },
+          take: 100,
+          orderBy: { consentDate: "desc" },
+        }),
+        ctx.prisma.serviceUserReview.findMany({
+          where: { serviceUserId, organisationId },
+          take: 100,
+          orderBy: { reviewDate: "desc" },
+        }),
+        ctx.prisma.healthRecord.findMany({
+          where: { serviceUserId, organisationId },
+          take: 100,
+          orderBy: { recordedDate: "desc" },
+        }),
+        ctx.prisma.incident.findMany({
+          where: { serviceUserId, organisationId },
+          take: 100,
+          orderBy: { incidentDate: "desc" },
+        }),
+      ]);
+
+      type TimelineEvent = {
+        id: string;
+        type: string;
+        date: Date;
+        title: string;
+        subtitle?: string;
+        href: string;
+      };
+
+      const events: TimelineEvent[] = [
+        ...careVisits.map((v) => ({
+          id: v.id,
+          type: "CARE_VISIT",
+          date: v.visitDate,
+          title: `Care visit${v.staffMember ? ` — ${v.staffMember.firstName} ${v.staffMember.lastName}` : ""}`,
+          href: "/care-records",
+        })),
+        ...personalPlans.map((p) => ({
+          id: p.id,
+          type: "PERSONAL_PLAN",
+          date: p.createdAt,
+          title: `Personal plan v${p.planVersion}`,
+          subtitle: p.status,
+          href: "/personal-plan",
+        })),
+        ...riskAssessments.map((r) => ({
+          id: r.id,
+          type: "RISK_ASSESSMENT",
+          date: r.assessmentDate,
+          title: `${r.assessmentType.replace(/_/g, " ")} risk assessment — ${r.riskLevel}`,
+          href: "/risk-assessments",
+        })),
+        ...consentRecords.map((c) => ({
+          id: c.id,
+          type: "CONSENT",
+          date: c.consentDate,
+          title: `Consent ${c.consentType.replace(/_/g, " ")}: ${c.consentGiven ? "given" : "withheld"}`,
+          href: "/consent",
+        })),
+        ...reviews.map((r) => ({
+          id: r.id,
+          type: "REVIEW",
+          date: r.reviewDate,
+          title: `${r.reviewType} review`,
+          href: "/reviews",
+        })),
+        ...healthRecords.map((h) => ({
+          id: h.id,
+          type: "HEALTH_RECORD",
+          date: h.recordedDate,
+          title: h.title,
+          subtitle: h.recordType.replace(/_/g, " "),
+          href: "/health",
+        })),
+        ...incidents.map((i) => ({
+          id: i.id,
+          type: "INCIDENT",
+          date: i.incidentDate,
+          title: `${i.incidentType.replace(/_/g, " ")} incident`,
+          subtitle: i.severity,
+          href: "/incidents",
+        })),
+      ];
+
+      events.sort((a, b) => b.date.getTime() - a.date.getTime());
+
+      const total = events.length;
+      const page = events.slice(input.offset, input.offset + input.limit);
+
+      return { events: page, total };
+    }),
+
+  // ─────────────────────────────────────────
+  // PENDING ACTIONS (compliance queue)
+  // ─────────────────────────────────────────
+
+  getPendingActions: protectedProcedure.query(async ({ ctx }) => {
+    const { organisationId } = ctx.user as { organisationId: string };
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const thirtyDaysLater = new Date(today);
+    thirtyDaysLater.setDate(thirtyDaysLater.getDate() + 30);
+    const twelveMonthsAgo = new Date(today);
+    twelveMonthsAgo.setFullYear(twelveMonthsAgo.getFullYear() - 1);
+
+    const REQUIRED_CONSENT_TYPES = [
+      "CARE_AND_SUPPORT",
+      "INFORMATION_SHARING",
+      "MEDICATION",
+      "PHOTOGRAPHY",
+    ] as ConsentType[];
+
+    const REQUIRED_RISK_ASSESSMENT_TYPES = [
+      "ENVIRONMENTAL",
+      "MOVING_HANDLING",
+      "FALLS",
+      "NUTRITION_HYDRATION",
+      "SKIN_INTEGRITY",
+      "FIRE_SAFETY",
+      "LONE_WORKING",
+      "INFECTION_CONTROL",
+      "SPECIFIC_CARE_TASK",
+    ] as RiskAssessmentType[];
+
+    const [plansRaw, reviewsRaw, riskRaw, agreementsRaw, activeClients] =
+      await Promise.all([
+        ctx.prisma.personalPlan.findMany({
+          where: { organisationId, status: "DRAFT", serviceUser: { status: "ACTIVE" } },
+          select: {
+            id: true,
+            planVersion: true,
+            createdAt: true,
+            serviceUserId: true,
+            serviceUser: { select: { firstName: true, lastName: true } },
+          },
+          orderBy: { createdAt: "asc" },
+        }),
+        ctx.prisma.serviceUserReview.findMany({
+          where: {
+            organisationId,
+            nextReviewDate: { lt: today },
+            serviceUser: { status: "ACTIVE" },
+          },
+          select: {
+            id: true,
+            reviewDate: true,
+            nextReviewDate: true,
+            reviewType: true,
+            serviceUserId: true,
+            serviceUser: { select: { firstName: true, lastName: true } },
+          },
+          orderBy: { reviewDate: "desc" },
+        }),
+        ctx.prisma.riskAssessment.findMany({
+          where: {
+            organisationId,
+            status: "ACTIVE",
+            nextReviewDate: { lt: today },
+            serviceUser: { status: "ACTIVE" },
+          },
+          select: {
+            id: true,
+            assessmentType: true,
+            nextReviewDate: true,
+            serviceUserId: true,
+            serviceUser: { select: { firstName: true, lastName: true } },
+          },
+          orderBy: { nextReviewDate: "asc" },
+        }),
+        ctx.prisma.serviceAgreement.findMany({
+          where: {
+            organisationId,
+            endDate: { gte: today, lte: thirtyDaysLater },
+            serviceUser: { status: "ACTIVE" },
+          },
+          select: {
+            id: true,
+            endDate: true,
+            serviceUserId: true,
+            serviceUser: { select: { firstName: true, lastName: true } },
+          },
+          orderBy: { endDate: "asc" },
+        }),
+        ctx.prisma.serviceUser.findMany({
+          where: { organisationId, status: "ACTIVE" },
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            consentRecords: {
+              select: { id: true, consentType: true, consentGiven: true, consentDate: true },
+              orderBy: { consentDate: "desc" },
+            },
+            personalPlans: { select: { status: true } },
+            riskAssessments: {
+              where: { status: "ACTIVE" },
+              select: { assessmentType: true },
+            },
+            serviceAgreements: {
+              select: { id: true, signedByServiceUser: true, signedByProvider: true },
+              orderBy: { startDate: "desc" },
+              take: 1,
+            },
+            serviceUserReviews: { select: { id: true }, take: 1 },
+          },
+        }),
+      ]);
+
+    // Deduplicate reviews — one per client, keeping the most recent review date
+    const reviewMap = new Map<string, (typeof reviewsRaw)[0]>();
+    for (const r of reviewsRaw) {
+      if (!reviewMap.has(r.serviceUserId)) reviewMap.set(r.serviceUserId, r);
+    }
+    const overdueReviews = Array.from(reviewMap.values());
+
+    // A client is missing consent for a required type if:
+    //   - there is no record at all for that type, OR
+    //   - the most recent record (consentRecords are ordered desc) has consentGiven: false
+    const missingConsents: Array<{
+      clientId: string;
+      clientName: string;
+      missingTypes: Array<{ type: ConsentType; reason: "NOT_RECORDED" | "NOT_GIVEN" }>;
+    }> = [];
+    for (const client of activeClients) {
+      const missingTypes: Array<{ type: ConsentType; reason: "NOT_RECORDED" | "NOT_GIVEN" }> = [];
+      for (const t of REQUIRED_CONSENT_TYPES) {
+        const records = client.consentRecords.filter((c) => c.consentType === t);
+        if (records.length === 0) {
+          missingTypes.push({ type: t, reason: "NOT_RECORDED" });
+        } else if (!records[0].consentGiven) {
+          missingTypes.push({ type: t, reason: "NOT_GIVEN" });
+        }
+      }
+      if (missingTypes.length > 0) {
+        missingConsents.push({
+          clientId: client.id,
+          clientName: `${client.firstName} ${client.lastName}`,
+          missingTypes,
+        });
+      }
+    }
+
+    // Flag the most recent record per (client, consentType) if it is >12 months old.
+    // Only flag actively given consents — declined/missing types are already in missingConsents.
+    const expiredConsents: Array<{
+      id: string;
+      consentType: ConsentType;
+      consentDate: Date;
+      clientId: string;
+      clientName: string;
+      href: string;
+    }> = [];
+    for (const client of activeClients) {
+      const typesSeen = new Set<ConsentType>();
+      for (const record of client.consentRecords) {
+        if (!typesSeen.has(record.consentType)) {
+          typesSeen.add(record.consentType);
+          if (record.consentGiven && record.consentDate < twelveMonthsAgo) {
+            expiredConsents.push({
+              id: record.id,
+              consentType: record.consentType,
+              consentDate: record.consentDate,
+              clientId: client.id,
+              clientName: `${client.firstName} ${client.lastName}`,
+              href: `/clients/${client.id}/consent`,
+            });
+          }
+        }
+      }
+    }
+
+    // Clients with no ACTIVE or DRAFT plan (DRAFT plans already appear in plansAwaitingApproval)
+    const clientsWithoutPlan = activeClients
+      .filter((c) => !c.personalPlans.some((p) => p.status === "ACTIVE" || p.status === "DRAFT"))
+      .map((c) => ({
+        clientId: c.id,
+        clientName: `${c.firstName} ${c.lastName}`,
+        href: `/clients/${c.id}/personal-plan`,
+      }));
+
+    // Clients missing any of the 9 required risk assessment types
+    const missingRiskAssessments = activeClients.flatMap((client) => {
+      const existing = new Set(client.riskAssessments.map((r) => r.assessmentType));
+      const missingTypes = REQUIRED_RISK_ASSESSMENT_TYPES.filter((t) => !existing.has(t));
+      return missingTypes.length > 0
+        ? [{ clientId: client.id, clientName: `${client.firstName} ${client.lastName}`, missingTypes }]
+        : [];
+    });
+
+    // Clients with no service agreement at all
+    const clientsWithoutAgreement = activeClients
+      .filter((c) => c.serviceAgreements.length === 0)
+      .map((c) => ({
+        clientId: c.id,
+        clientName: `${c.firstName} ${c.lastName}`,
+        href: `/clients/${c.id}/agreement`,
+      }));
+
+    // Clients whose latest agreement has not been fully signed
+    const unsignedAgreements = activeClients.flatMap((client) => {
+      const agreement = client.serviceAgreements[0];
+      if (!agreement) return [];
+      const missingSigs = [
+        ...(!agreement.signedByServiceUser ? ["Service User"] : []),
+        ...(!agreement.signedByProvider ? ["Provider"] : []),
+      ];
+      return missingSigs.length > 0
+        ? [{
+            id: agreement.id,
+            clientId: client.id,
+            clientName: `${client.firstName} ${client.lastName}`,
+            missingSigs,
+            href: `/clients/${client.id}/agreement`,
+          }]
+        : [];
+    });
+
+    // Clients who have never had any review
+    const clientsNeverReviewed = activeClients
+      .filter((c) => c.serviceUserReviews.length === 0)
+      .map((c) => ({
+        clientId: c.id,
+        clientName: `${c.firstName} ${c.lastName}`,
+        href: `/clients/${c.id}/reviews`,
+      }));
+
+    return {
+      plansAwaitingApproval: plansRaw.map((p) => ({
+        id: p.id,
+        planVersion: p.planVersion,
+        createdAt: p.createdAt,
+        clientId: p.serviceUserId,
+        clientName: `${p.serviceUser.firstName} ${p.serviceUser.lastName}`,
+        href: `/clients/${p.serviceUserId}/personal-plan`,
+      })),
+      overdueReviews: overdueReviews.map((r) => ({
+        id: r.id,
+        nextReviewDate: r.nextReviewDate!,
+        reviewType: r.reviewType,
+        clientId: r.serviceUserId,
+        clientName: `${r.serviceUser.firstName} ${r.serviceUser.lastName}`,
+        href: `/clients/${r.serviceUserId}/reviews`,
+      })),
+      overdueRiskAssessments: riskRaw.map((r) => ({
+        id: r.id,
+        assessmentType: r.assessmentType,
+        nextReviewDate: r.nextReviewDate!,
+        clientId: r.serviceUserId,
+        clientName: `${r.serviceUser.firstName} ${r.serviceUser.lastName}`,
+        href: `/clients/${r.serviceUserId}/risk-assessments`,
+      })),
+      expiringSoon: agreementsRaw.map((a) => ({
+        id: a.id,
+        endDate: a.endDate!,
+        clientId: a.serviceUserId,
+        clientName: `${a.serviceUser.firstName} ${a.serviceUser.lastName}`,
+        href: `/clients/${a.serviceUserId}/agreement`,
+      })),
+      expiredConsents,
+      missingConsents,
+      clientsWithoutPlan,
+      missingRiskAssessments,
+      clientsWithoutAgreement,
+      unsignedAgreements,
+      clientsNeverReviewed,
+    };
+  }),
 });
