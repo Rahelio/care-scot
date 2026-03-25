@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { router, protectedProcedure } from "../trpc";
-import { ServiceUserStatus, RiskAssessmentType, RiskLevel, ConsentType, StaffAssignmentRole } from "@prisma/client";
+import { ServiceUserStatus, RiskAssessmentType, RiskLevel, ConsentType, StaffAssignmentRole, Prisma } from "@prisma/client";
 import { TRPCError } from "@trpc/server";
 import { createAuditLog } from "../middleware/audit";
 
@@ -934,6 +934,7 @@ export const clientsRouter = router({
         familyCommunication: z.string().optional(),
         conditionChanges: z.string().optional(),
         notes: z.string().optional(),
+        mileageMiles: z.string().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -987,6 +988,7 @@ export const clientsRouter = router({
           familyCommunication: input.familyCommunication,
           conditionChanges: input.conditionChanges,
           notes: input.notes,
+          mileageMiles: input.mileageMiles ? new Prisma.Decimal(parseFloat(input.mileageMiles)) : undefined,
           createdBy: userId,
           updatedBy: userId,
         },

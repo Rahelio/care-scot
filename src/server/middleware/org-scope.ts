@@ -1,4 +1,4 @@
-import { prisma } from "@/lib/prisma";
+import { prisma } from "../../lib/prisma";
 
 /**
  * Prisma model names (PascalCase) that carry an `organisationId` column.

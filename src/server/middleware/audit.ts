@@ -1,5 +1,5 @@
 import { AuditAction } from "@prisma/client";
-import { prisma } from "@/lib/prisma";
+import { prisma } from "../../lib/prisma";
 
 // ─── Models excluded from audit logging ───────────────────────────────────────
 // Audit log itself (infinite-loop prevention) + auth/session tables.
