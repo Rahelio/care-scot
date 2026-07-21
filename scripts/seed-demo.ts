@@ -4,6 +4,7 @@
  * Idempotent: uses upsert for fixed-ID entities; skips dynamic data if records already exist.
  */
 
+import "dotenv/config";
 import {
   PrismaClient,
   UserRole,
@@ -30,9 +31,11 @@ import {
   InvoiceStatus,
   ReviewType,
 } from "@prisma/client";
+import { PrismaPg } from "@prisma/adapter-pg";
 import { hash } from "bcryptjs";
 
-const prisma = new PrismaClient();
+const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
+const prisma = new PrismaClient({ adapter });
 
 const IDS = {
   org1: "00000000-0000-0000-0000-000000000001",

@@ -15,7 +15,7 @@ import {
   CreditNoteStatus,
   HolidayRegion,
 } from "@prisma/client";
-import { Decimal } from "@prisma/client/runtime/library";
+import { Decimal } from "@prisma/client/runtime/client";
 import { lookupRate } from "../services/financial/rate-lookup";
 import { calculateBillingDuration } from "../services/financial/billing-calculator";
 

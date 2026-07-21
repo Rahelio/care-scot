@@ -6,11 +6,14 @@
  * Requires DATABASE_URL to be set (pointing at the production database).
  */
 
+import "dotenv/config";
 import { PrismaClient, UserRole } from "@prisma/client";
+import { PrismaPg } from "@prisma/adapter-pg";
 import { hash } from "bcryptjs";
 import * as readline from "readline";
 
-const prisma = new PrismaClient();
+const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
+const prisma = new PrismaClient({ adapter });
 
 function prompt(question: string): Promise<string> {
   const rl = readline.createInterface({
