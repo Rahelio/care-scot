@@ -3,9 +3,8 @@ generator client {
   binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
 }
 
-datasource database {
-  provider      = "postgresql"
-  url           = "DATABASE_URL"
+datasource db {
+  provider = "postgresql"
 }
 
 // ─────────────────────────────────────────────
@@ -489,35 +488,35 @@ model Organisation {
   createdAt                 DateTime @default(now()) @map("created_at") @db.Timestamptz()
   updatedAt                 DateTime @updatedAt @map("updated_at") @db.Timestamptz()
 
-  users                        User[]
-  auditLogs                    AuditLog[]
-  serviceUsers                 ServiceUser[]
-  staffMembers                 StaffMember[]
-  medicationErrors             MedicationError[]
-  medicationAudits             MedicationAudit[]
-  incidents                    Incident[]
-  safeguardingConcerns         SafeguardingConcern[]
-  careInspNotifications        CareInspectorateNotification[]
-  policies                     Policy[]
-  complaints                   Complaint[]
-  compliments                  Compliment[]
-  qualityAudits                QualityAudit[]
-  careInspInspections          CareInspectorateInspection[]
-  equipmentChecks              EquipmentCheck[]
-  satisfactionSurveys          SatisfactionSurvey[]
-  annualReturns                AnnualReturn[]
-  files                        File[]
-  rotaShifts                   RotaShift[]
-  notifications                Notification[]
-  funders                      Funder[]
-  rateCards                    RateCard[]
-  carePackages                 CarePackage[]
-  billableVisits               BillableVisit[]
-  visitSchedules               VisitSchedule[]
-  bankHolidays                 BankHoliday[]
-  invoices                     Invoice[]
-  creditNotes                  CreditNote[]
-  sharedHCPs                   SharedHealthcareProfessional[]
+  users                 User[]
+  auditLogs             AuditLog[]
+  serviceUsers          ServiceUser[]
+  staffMembers          StaffMember[]
+  medicationErrors      MedicationError[]
+  medicationAudits      MedicationAudit[]
+  incidents             Incident[]
+  safeguardingConcerns  SafeguardingConcern[]
+  careInspNotifications CareInspectorateNotification[]
+  policies              Policy[]
+  complaints            Complaint[]
+  compliments           Compliment[]
+  qualityAudits         QualityAudit[]
+  careInspInspections   CareInspectorateInspection[]
+  equipmentChecks       EquipmentCheck[]
+  satisfactionSurveys   SatisfactionSurvey[]
+  annualReturns         AnnualReturn[]
+  files                 File[]
+  rotaShifts            RotaShift[]
+  notifications         Notification[]
+  funders               Funder[]
+  rateCards             RateCard[]
+  carePackages          CarePackage[]
+  billableVisits        BillableVisit[]
+  visitSchedules        VisitSchedule[]
+  bankHolidays          BankHoliday[]
+  invoices              Invoice[]
+  creditNotes           CreditNote[]
+  sharedHCPs            SharedHealthcareProfessional[]
 
   @@map("organisations")
 }
@@ -546,27 +545,27 @@ model User {
   sessions Session[]
 
   // Audit trail back-references
-  auditLogs                    AuditLog[]
-  approvedPersonalPlans        PersonalPlan[]                   @relation("PersonalPlanApprovedBy")
-  createdPersonalPlans         PersonalPlan[]                   @relation("PersonalPlanCreatedBy")
-  assessedRisks                RiskAssessment[]                 @relation("RiskAssessmentAssessedBy")
-  signedOffVisits              CareVisitRecord[]                @relation("CareVisitSignedOffBy")
-  reviewedServiceUsers         ServiceUserReview[]              @relation("ServiceUserReviewer")
-  verifiedReferences           StaffReference[]                 @relation("ReferenceVerifiedBy")
-  approvedAbsences             StaffAbsenceRecord[]             @relation("AbsenceApprovedBy")
-  conductedMedAudits           MedicationAudit[]                @relation("MedicationAuditor")
-  investigatedMedErrors        MedicationError[]                @relation("MedErrorInvestigatedBy")
-  reportedIncidents            Incident[]                       @relation("IncidentReportedBy")
-  closedIncidents              Incident[]                       @relation("IncidentClosedBy")
-  raisedSafeguarding           SafeguardingConcern[]            @relation("SafeguardingRaisedBy")
+  auditLogs                      AuditLog[]
+  approvedPersonalPlans          PersonalPlan[]                 @relation("PersonalPlanApprovedBy")
+  createdPersonalPlans           PersonalPlan[]                 @relation("PersonalPlanCreatedBy")
+  assessedRisks                  RiskAssessment[]               @relation("RiskAssessmentAssessedBy")
+  signedOffVisits                CareVisitRecord[]              @relation("CareVisitSignedOffBy")
+  reviewedServiceUsers           ServiceUserReview[]            @relation("ServiceUserReviewer")
+  verifiedReferences             StaffReference[]               @relation("ReferenceVerifiedBy")
+  approvedAbsences               StaffAbsenceRecord[]           @relation("AbsenceApprovedBy")
+  conductedMedAudits             MedicationAudit[]              @relation("MedicationAuditor")
+  investigatedMedErrors          MedicationError[]              @relation("MedErrorInvestigatedBy")
+  reportedIncidents              Incident[]                     @relation("IncidentReportedBy")
+  closedIncidents                Incident[]                     @relation("IncidentClosedBy")
+  raisedSafeguarding             SafeguardingConcern[]          @relation("SafeguardingRaisedBy")
   submittedCareInspNotifications CareInspectorateNotification[] @relation("NotificationSubmittedBy")
-  approvedPolicies             Policy[]                         @relation("PolicyApprovedBy")
-  investigatedComplaints       Complaint[]                      @relation("ComplaintInvestigatedBy")
-  conductedQualityAudits       QualityAudit[]                   @relation("QualityAuditor")
-  conductedEquipmentChecks     EquipmentCheck[]                 @relation("EquipmentCheckedBy")
-  uploadedFiles                File[]
-  notifications                Notification[]
-  approvedBillableVisits       BillableVisit[]                  @relation("BillableVisitApprovedBy")
+  approvedPolicies               Policy[]                       @relation("PolicyApprovedBy")
+  investigatedComplaints         Complaint[]                    @relation("ComplaintInvestigatedBy")
+  conductedQualityAudits         QualityAudit[]                 @relation("QualityAuditor")
+  conductedEquipmentChecks       EquipmentCheck[]               @relation("EquipmentCheckedBy")
+  uploadedFiles                  File[]
+  notifications                  Notification[]
+  approvedBillableVisits         BillableVisit[]                @relation("BillableVisitApprovedBy")
 
   @@map("users")
 }
@@ -916,10 +915,10 @@ model CareVisitRecord {
   createdBy             String?   @map("created_by") @db.Uuid
   updatedBy             String?   @map("updated_by") @db.Uuid
 
-  serviceUser     ServiceUser   @relation(fields: [serviceUserId], references: [id])
-  staffMember     StaffMember   @relation(fields: [staffMemberId], references: [id])
-  signedOffByUser User?         @relation("CareVisitSignedOffBy", fields: [signedOffBy], references: [id])
-  carePackage     CarePackage?  @relation(fields: [carePackageId], references: [id])
+  serviceUser     ServiceUser    @relation(fields: [serviceUserId], references: [id])
+  staffMember     StaffMember    @relation(fields: [staffMemberId], references: [id])
+  signedOffByUser User?          @relation("CareVisitSignedOffBy", fields: [signedOffBy], references: [id])
+  carePackage     CarePackage?   @relation(fields: [carePackageId], references: [id])
   billableVisit   BillableVisit?
 
   @@map("care_visit_records")
@@ -1003,47 +1002,47 @@ model StaffMember {
   organisation Organisation @relation(fields: [organisationId], references: [id])
   users        User[]
 
-  pvgRecords           StaffPvgRecord[]
-  registrations        StaffRegistration[]
-  references           StaffReference[]
-  healthDeclarations   StaffHealthDeclaration[]
-  induction            StaffInduction?          @relation("InductionStaffMember")
-  mentoring            StaffInduction[]         @relation("InductionMentor")
-  trainingRecords      StaffTrainingRecord[]
-  supervisions         StaffSupervision[]       @relation("SupervisionStaffMember")
-  conductedSupervisions StaffSupervision[]      @relation("SupervisionSupervisor")
-  appraisals           StaffAppraisal[]         @relation("AppraisalStaffMember")
-  conductedAppraisals  StaffAppraisal[]         @relation("AppraisalAppraiser")
-  disciplinaryRecords  StaffDisciplinaryRecord[]
-  absenceRecords       StaffAbsenceRecord[]
-  leaving              StaffLeaving?
-  careVisitRecords     CareVisitRecord[]
-  administeredMeds     MedicationAdminRecord[]  @relation("MedAdminAdministeredBy")
-  witnessedMeds        MedicationAdminRecord[]  @relation("MedAdminWitness")
-  reportedMedErrors    MedicationError[]        @relation("MedErrorReportedBy")
-  staffIncidents       Incident[]
-  rotaShifts               RotaShift[]
-  rotaAvailability         RotaAvailability[]
-  serviceUserAssignments   ServiceUserStaff[]
+  pvgRecords             StaffPvgRecord[]
+  registrations          StaffRegistration[]
+  references             StaffReference[]
+  healthDeclarations     StaffHealthDeclaration[]
+  induction              StaffInduction?           @relation("InductionStaffMember")
+  mentoring              StaffInduction[]          @relation("InductionMentor")
+  trainingRecords        StaffTrainingRecord[]
+  supervisions           StaffSupervision[]        @relation("SupervisionStaffMember")
+  conductedSupervisions  StaffSupervision[]        @relation("SupervisionSupervisor")
+  appraisals             StaffAppraisal[]          @relation("AppraisalStaffMember")
+  conductedAppraisals    StaffAppraisal[]          @relation("AppraisalAppraiser")
+  disciplinaryRecords    StaffDisciplinaryRecord[]
+  absenceRecords         StaffAbsenceRecord[]
+  leaving                StaffLeaving?
+  careVisitRecords       CareVisitRecord[]
+  administeredMeds       MedicationAdminRecord[]   @relation("MedAdminAdministeredBy")
+  witnessedMeds          MedicationAdminRecord[]   @relation("MedAdminWitness")
+  reportedMedErrors      MedicationError[]         @relation("MedErrorReportedBy")
+  staffIncidents         Incident[]
+  rotaShifts             RotaShift[]
+  rotaAvailability       RotaAvailability[]
+  serviceUserAssignments ServiceUserStaff[]
 
   @@map("staff_members")
 }
 
 model StaffPvgRecord {
-  id                          String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  staffMemberId               String          @map("staff_member_id") @db.Uuid
-  organisationId              String          @map("organisation_id") @db.Uuid
-  pvgMembershipNumber         String?         @map("pvg_membership_number")
-  pvgSchemeRecordDate         DateTime?       @map("pvg_scheme_record_date") @db.Date
-  pvgUpdateService            Boolean         @default(false) @map("pvg_update_service")
-  disclosureCertificateNumber String?         @map("disclosure_certificate_number")
-  disclosureDate              DateTime?       @map("disclosure_date") @db.Date
+  id                          String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  staffMemberId               String           @map("staff_member_id") @db.Uuid
+  organisationId              String           @map("organisation_id") @db.Uuid
+  pvgMembershipNumber         String?          @map("pvg_membership_number")
+  pvgSchemeRecordDate         DateTime?        @map("pvg_scheme_record_date") @db.Date
+  pvgUpdateService            Boolean          @default(false) @map("pvg_update_service")
+  disclosureCertificateNumber String?          @map("disclosure_certificate_number")
+  disclosureDate              DateTime?        @map("disclosure_date") @db.Date
   disclosureLevel             DisclosureLevel? @map("disclosure_level")
-  renewalDate                 DateTime?       @map("renewal_date") @db.Date
-  createdAt                   DateTime        @default(now()) @map("created_at") @db.Timestamptz()
-  updatedAt                   DateTime        @updatedAt @map("updated_at") @db.Timestamptz()
-  createdBy                   String?         @map("created_by") @db.Uuid
-  updatedBy                   String?         @map("updated_by") @db.Uuid
+  renewalDate                 DateTime?        @map("renewal_date") @db.Date
+  createdAt                   DateTime         @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt                   DateTime         @updatedAt @map("updated_at") @db.Timestamptz()
+  createdBy                   String?          @map("created_by") @db.Uuid
+  updatedBy                   String?          @map("updated_by") @db.Uuid
 
   staffMember StaffMember @relation(fields: [staffMemberId], references: [id])
 
@@ -1089,8 +1088,8 @@ model StaffReference {
   createdBy                String?       @map("created_by") @db.Uuid
   updatedBy                String?       @map("updated_by") @db.Uuid
 
-  staffMember         StaffMember @relation(fields: [staffMemberId], references: [id])
-  verifiedByUser      User?       @relation("ReferenceVerifiedBy", fields: [referenceVerifiedBy], references: [id])
+  staffMember    StaffMember @relation(fields: [staffMemberId], references: [id])
+  verifiedByUser User?       @relation("ReferenceVerifiedBy", fields: [referenceVerifiedBy], references: [id])
 
   @@map("staff_references")
 }
@@ -1204,21 +1203,21 @@ model StaffAppraisal {
 }
 
 model StaffDisciplinaryRecord {
-  id                  String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  staffMemberId       String                 @map("staff_member_id") @db.Uuid
-  organisationId      String                 @map("organisation_id") @db.Uuid
-  recordType          DisciplinaryRecordType @map("record_type")
-  dateRaised          DateTime               @map("date_raised") @db.Date
-  description         String?                @db.Text
-  investigationNotes  String?                @map("investigation_notes") @db.Text
-  outcome             String?                @db.Text
-  sanctionLevel       SanctionLevel?         @map("sanction_level")
-  appealOutcome       String?                @map("appeal_outcome") @db.Text
-  documentId          String?                @map("document_id") @db.Uuid // FK to files — raw UUID
-  createdAt           DateTime               @default(now()) @map("created_at") @db.Timestamptz()
-  updatedAt           DateTime               @updatedAt @map("updated_at") @db.Timestamptz()
-  createdBy           String?                @map("created_by") @db.Uuid
-  updatedBy           String?                @map("updated_by") @db.Uuid
+  id                 String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  staffMemberId      String                 @map("staff_member_id") @db.Uuid
+  organisationId     String                 @map("organisation_id") @db.Uuid
+  recordType         DisciplinaryRecordType @map("record_type")
+  dateRaised         DateTime               @map("date_raised") @db.Date
+  description        String?                @db.Text
+  investigationNotes String?                @map("investigation_notes") @db.Text
+  outcome            String?                @db.Text
+  sanctionLevel      SanctionLevel?         @map("sanction_level")
+  appealOutcome      String?                @map("appeal_outcome") @db.Text
+  documentId         String?                @map("document_id") @db.Uuid // FK to files — raw UUID
+  createdAt          DateTime               @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt          DateTime               @updatedAt @map("updated_at") @db.Timestamptz()
+  createdBy          String?                @map("created_by") @db.Uuid
+  updatedBy          String?                @map("updated_by") @db.Uuid
 
   staffMember StaffMember @relation(fields: [staffMemberId], references: [id])
 
@@ -1226,23 +1225,23 @@ model StaffDisciplinaryRecord {
 }
 
 model StaffAbsenceRecord {
-  id                       String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  staffMemberId            String      @map("staff_member_id") @db.Uuid
-  organisationId           String      @map("organisation_id") @db.Uuid
-  absenceType              AbsenceType @map("absence_type")
-  startDate                DateTime    @map("start_date") @db.Date
-  endDate                  DateTime?   @map("end_date") @db.Date
-  totalDays                Decimal?    @map("total_days") @db.Decimal(5, 1)
-  reason                   String?     @db.Text
-  returnToWorkInterview    Boolean     @default(false) @map("return_to_work_interview")
-  rtwDate                  DateTime?   @map("rtw_date") @db.Date
-  rtwNotes                 String?     @map("rtw_notes") @db.Text
-  fitNoteDocumentId        String?     @map("fit_note_document_id") @db.Uuid // FK to files — raw UUID
-  approvedBy               String?     @map("approved_by") @db.Uuid
-  createdAt                DateTime    @default(now()) @map("created_at") @db.Timestamptz()
-  updatedAt                DateTime    @updatedAt @map("updated_at") @db.Timestamptz()
-  createdBy                String?     @map("created_by") @db.Uuid
-  updatedBy                String?     @map("updated_by") @db.Uuid
+  id                    String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  staffMemberId         String      @map("staff_member_id") @db.Uuid
+  organisationId        String      @map("organisation_id") @db.Uuid
+  absenceType           AbsenceType @map("absence_type")
+  startDate             DateTime    @map("start_date") @db.Date
+  endDate               DateTime?   @map("end_date") @db.Date
+  totalDays             Decimal?    @map("total_days") @db.Decimal(5, 1)
+  reason                String?     @db.Text
+  returnToWorkInterview Boolean     @default(false) @map("return_to_work_interview")
+  rtwDate               DateTime?   @map("rtw_date") @db.Date
+  rtwNotes              String?     @map("rtw_notes") @db.Text
+  fitNoteDocumentId     String?     @map("fit_note_document_id") @db.Uuid // FK to files — raw UUID
+  approvedBy            String?     @map("approved_by") @db.Uuid
+  createdAt             DateTime    @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt             DateTime    @updatedAt @map("updated_at") @db.Timestamptz()
+  createdBy             String?     @map("created_by") @db.Uuid
+  updatedBy             String?     @map("updated_by") @db.Uuid
 
   staffMember    StaffMember @relation(fields: [staffMemberId], references: [id])
   approvedByUser User?       @relation("AbsenceApprovedBy", fields: [approvedBy], references: [id])
@@ -1300,63 +1299,63 @@ model ServiceUserMedication {
   createdBy           String?          @map("created_by") @db.Uuid
   updatedBy           String?          @map("updated_by") @db.Uuid
 
-  serviceUser    ServiceUser             @relation(fields: [serviceUserId], references: [id])
-  adminRecords   MedicationAdminRecord[]
+  serviceUser  ServiceUser             @relation(fields: [serviceUserId], references: [id])
+  adminRecords MedicationAdminRecord[]
 
   @@map("service_user_medications")
 }
 
 model MedicationAdminRecord {
-  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  serviceUserId    String    @map("service_user_id") @db.Uuid
-  medicationId     String    @map("medication_id") @db.Uuid
-  organisationId   String    @map("organisation_id") @db.Uuid
-  scheduledDate    DateTime  @map("scheduled_date") @db.Date
-  scheduledTime    String    @map("scheduled_time") // e.g. "08:00"
-  administered     Boolean   @default(false)
-  administeredBy   String?   @map("administered_by") @db.Uuid
-  administeredAt   DateTime? @map("administered_at") @db.Timestamptz()
-  doseGiven        String?   @map("dose_given")
-  refused          Boolean   @default(false)
-  refusedReason    String?   @map("refused_reason") @db.Text
-  notAvailable     Boolean   @default(false) @map("not_available")
-  notAvailableReason String? @map("not_available_reason") @db.Text
-  prnReasonGiven   String?   @map("prn_reason_given") @db.Text
-  outcomeNotes     String?   @map("outcome_notes") @db.Text
-  witnessId        String?   @map("witness_id") @db.Uuid // for controlled drugs
-  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz()
-  updatedAt        DateTime  @updatedAt @map("updated_at") @db.Timestamptz()
-  createdBy        String?   @map("created_by") @db.Uuid
-  updatedBy        String?   @map("updated_by") @db.Uuid
+  id                 String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  serviceUserId      String    @map("service_user_id") @db.Uuid
+  medicationId       String    @map("medication_id") @db.Uuid
+  organisationId     String    @map("organisation_id") @db.Uuid
+  scheduledDate      DateTime  @map("scheduled_date") @db.Date
+  scheduledTime      String    @map("scheduled_time") // e.g. "08:00"
+  administered       Boolean   @default(false)
+  administeredBy     String?   @map("administered_by") @db.Uuid
+  administeredAt     DateTime? @map("administered_at") @db.Timestamptz()
+  doseGiven          String?   @map("dose_given")
+  refused            Boolean   @default(false)
+  refusedReason      String?   @map("refused_reason") @db.Text
+  notAvailable       Boolean   @default(false) @map("not_available")
+  notAvailableReason String?   @map("not_available_reason") @db.Text
+  prnReasonGiven     String?   @map("prn_reason_given") @db.Text
+  outcomeNotes       String?   @map("outcome_notes") @db.Text
+  witnessId          String?   @map("witness_id") @db.Uuid // for controlled drugs
+  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt          DateTime  @updatedAt @map("updated_at") @db.Timestamptz()
+  createdBy          String?   @map("created_by") @db.Uuid
+  updatedBy          String?   @map("updated_by") @db.Uuid
 
-  serviceUser    ServiceUser           @relation(fields: [serviceUserId], references: [id])
-  medication     ServiceUserMedication @relation(fields: [medicationId], references: [id])
-  administeredByStaff StaffMember?    @relation("MedAdminAdministeredBy", fields: [administeredBy], references: [id])
-  witness        StaffMember?          @relation("MedAdminWitness", fields: [witnessId], references: [id])
+  serviceUser         ServiceUser           @relation(fields: [serviceUserId], references: [id])
+  medication          ServiceUserMedication @relation(fields: [medicationId], references: [id])
+  administeredByStaff StaffMember?          @relation("MedAdminAdministeredBy", fields: [administeredBy], references: [id])
+  witness             StaffMember?          @relation("MedAdminWitness", fields: [witnessId], references: [id])
 
   @@map("medication_administration_records")
 }
 
 model MedicationError {
-  id                            String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  organisationId                String              @map("organisation_id") @db.Uuid
-  serviceUserId                 String?             @map("service_user_id") @db.Uuid
-  errorDate                     DateTime            @map("error_date") @db.Date
-  errorType                     MedicationErrorType @map("error_type")
-  nccMerpCategory               NccMerpCategory?    @map("ncc_merp_category")
-  description                   String?             @db.Text
-  actionTaken                   String?             @map("action_taken") @db.Text
-  reportedBy                    String?             @map("reported_by") @db.Uuid
-  reportedDate                  DateTime?           @map("reported_date") @db.Date
-  investigatedBy                String?             @map("investigated_by") @db.Uuid
-  investigationOutcome          String?             @map("investigation_outcome") @db.Text
-  careInspectorateNotified      Boolean             @default(false) @map("care_inspectorate_notified")
-  notificationDate              DateTime?           @map("notification_date") @db.Date
-  lessonsLearned                String?             @map("lessons_learned") @db.Text
-  createdAt                     DateTime            @default(now()) @map("created_at") @db.Timestamptz()
-  updatedAt                     DateTime            @updatedAt @map("updated_at") @db.Timestamptz()
-  createdBy                     String?             @map("created_by") @db.Uuid
-  updatedBy                     String?             @map("updated_by") @db.Uuid
+  id                       String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organisationId           String              @map("organisation_id") @db.Uuid
+  serviceUserId            String?             @map("service_user_id") @db.Uuid
+  errorDate                DateTime            @map("error_date") @db.Date
+  errorType                MedicationErrorType @map("error_type")
+  nccMerpCategory          NccMerpCategory?    @map("ncc_merp_category")
+  description              String?             @db.Text
+  actionTaken              String?             @map("action_taken") @db.Text
+  reportedBy               String?             @map("reported_by") @db.Uuid
+  reportedDate             DateTime?           @map("reported_date") @db.Date
+  investigatedBy           String?             @map("investigated_by") @db.Uuid
+  investigationOutcome     String?             @map("investigation_outcome") @db.Text
+  careInspectorateNotified Boolean             @default(false) @map("care_inspectorate_notified")
+  notificationDate         DateTime?           @map("notification_date") @db.Date
+  lessonsLearned           String?             @map("lessons_learned") @db.Text
+  createdAt                DateTime            @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt                DateTime            @updatedAt @map("updated_at") @db.Timestamptz()
+  createdBy                String?             @map("created_by") @db.Uuid
+  updatedBy                String?             @map("updated_by") @db.Uuid
 
   organisation       Organisation @relation(fields: [organisationId], references: [id])
   serviceUser        ServiceUser? @relation(fields: [serviceUserId], references: [id])
@@ -1419,35 +1418,35 @@ model Incident {
   createdBy                  String?          @map("created_by") @db.Uuid
   updatedBy                  String?          @map("updated_by") @db.Uuid
 
-  organisation            Organisation                   @relation(fields: [organisationId], references: [id])
-  serviceUser             ServiceUser?                   @relation(fields: [serviceUserId], references: [id])
-  staffMember             StaffMember?                   @relation(fields: [staffMemberId], references: [id])
-  reportedByUser          User?                          @relation("IncidentReportedBy", fields: [reportedBy], references: [id])
-  closedByUser            User?                          @relation("IncidentClosedBy", fields: [closedBy], references: [id])
-  careInspNotifications   CareInspectorateNotification[]
+  organisation          Organisation                   @relation(fields: [organisationId], references: [id])
+  serviceUser           ServiceUser?                   @relation(fields: [serviceUserId], references: [id])
+  staffMember           StaffMember?                   @relation(fields: [staffMemberId], references: [id])
+  reportedByUser        User?                          @relation("IncidentReportedBy", fields: [reportedBy], references: [id])
+  closedByUser          User?                          @relation("IncidentClosedBy", fields: [closedBy], references: [id])
+  careInspNotifications CareInspectorateNotification[]
 
   @@map("incidents")
 }
 
 model SafeguardingConcern {
-  id                         String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  organisationId             String                  @map("organisation_id") @db.Uuid
-  serviceUserId              String                  @map("service_user_id") @db.Uuid
-  concernDate                DateTime                @map("concern_date") @db.Date
-  concernType                SafeguardingConcernType @map("concern_type")
-  description                String?                 @db.Text
-  raisedBy                   String?                 @map("raised_by") @db.Uuid
-  referredTo                 String?                 @map("referred_to")
-  referralDate               DateTime?               @map("referral_date") @db.Date
-  referralReference          String?                 @map("referral_reference")
-  adultProtectionInvestigation Boolean               @default(false) @map("adult_protection_investigation")
-  investigationOutcome       String?                 @map("investigation_outcome") @db.Text
-  actionsTaken               String?                 @map("actions_taken") @db.Text
-  status                     SafeguardingStatus      @default(OPEN)
-  createdAt                  DateTime                @default(now()) @map("created_at") @db.Timestamptz()
-  updatedAt                  DateTime                @updatedAt @map("updated_at") @db.Timestamptz()
-  createdBy                  String?                 @map("created_by") @db.Uuid
-  updatedBy                  String?                 @map("updated_by") @db.Uuid
+  id                           String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organisationId               String                  @map("organisation_id") @db.Uuid
+  serviceUserId                String                  @map("service_user_id") @db.Uuid
+  concernDate                  DateTime                @map("concern_date") @db.Date
+  concernType                  SafeguardingConcernType @map("concern_type")
+  description                  String?                 @db.Text
+  raisedBy                     String?                 @map("raised_by") @db.Uuid
+  referredTo                   String?                 @map("referred_to")
+  referralDate                 DateTime?               @map("referral_date") @db.Date
+  referralReference            String?                 @map("referral_reference")
+  adultProtectionInvestigation Boolean                 @default(false) @map("adult_protection_investigation")
+  investigationOutcome         String?                 @map("investigation_outcome") @db.Text
+  actionsTaken                 String?                 @map("actions_taken") @db.Text
+  status                       SafeguardingStatus      @default(OPEN)
+  createdAt                    DateTime                @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt                    DateTime                @updatedAt @map("updated_at") @db.Timestamptz()
+  createdBy                    String?                 @map("created_by") @db.Uuid
+  updatedBy                    String?                 @map("updated_by") @db.Uuid
 
   organisation Organisation @relation(fields: [organisationId], references: [id])
   serviceUser  ServiceUser  @relation(fields: [serviceUserId], references: [id])
@@ -1457,25 +1456,25 @@ model SafeguardingConcern {
 }
 
 model CareInspectorateNotification {
-  id                      String                            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  organisationId          String                            @map("organisation_id") @db.Uuid
-  incidentId              String?                           @map("incident_id") @db.Uuid
-  notificationType        CareInspectorateNotificationType  @map("notification_type")
-  submittedDate           DateTime?                         @map("submitted_date") @db.Date
-  careInspectorateReference String?                         @map("care_inspectorate_reference")
-  description             String?                           @db.Text
-  followUpCorrespondence  String?                           @map("follow_up_correspondence") @db.Text
-  actionsTaken            String?                           @map("actions_taken") @db.Text
-  submittedBy             String?                           @map("submitted_by") @db.Uuid
-  documentId              String?                           @map("document_id") @db.Uuid // FK to files — raw UUID
-  createdAt               DateTime                          @default(now()) @map("created_at") @db.Timestamptz()
-  updatedAt               DateTime                          @updatedAt @map("updated_at") @db.Timestamptz()
-  createdBy               String?                           @map("created_by") @db.Uuid
-  updatedBy               String?                           @map("updated_by") @db.Uuid
+  id                        String                           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organisationId            String                           @map("organisation_id") @db.Uuid
+  incidentId                String?                          @map("incident_id") @db.Uuid
+  notificationType          CareInspectorateNotificationType @map("notification_type")
+  submittedDate             DateTime?                        @map("submitted_date") @db.Date
+  careInspectorateReference String?                          @map("care_inspectorate_reference")
+  description               String?                          @db.Text
+  followUpCorrespondence    String?                          @map("follow_up_correspondence") @db.Text
+  actionsTaken              String?                          @map("actions_taken") @db.Text
+  submittedBy               String?                          @map("submitted_by") @db.Uuid
+  documentId                String?                          @map("document_id") @db.Uuid // FK to files — raw UUID
+  createdAt                 DateTime                         @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt                 DateTime                         @updatedAt @map("updated_at") @db.Timestamptz()
+  createdBy                 String?                          @map("created_by") @db.Uuid
+  updatedBy                 String?                          @map("updated_by") @db.Uuid
 
-  organisation  Organisation @relation(fields: [organisationId], references: [id])
-  incident      Incident?    @relation(fields: [incidentId], references: [id])
-  submittedByUser User?      @relation("NotificationSubmittedBy", fields: [submittedBy], references: [id])
+  organisation    Organisation @relation(fields: [organisationId], references: [id])
+  incident        Incident?    @relation(fields: [incidentId], references: [id])
+  submittedByUser User?        @relation("NotificationSubmittedBy", fields: [submittedBy], references: [id])
 
   @@map("care_inspectorate_notifications")
 }
@@ -1502,21 +1501,21 @@ model Policy {
   createdBy      String?        @map("created_by") @db.Uuid
   updatedBy      String?        @map("updated_by") @db.Uuid
 
-  organisation     Organisation          @relation(fields: [organisationId], references: [id])
-  approvedByUser   User?                 @relation("PolicyApprovedBy", fields: [approvedBy], references: [id])
-  acknowledgments  PolicyAcknowledgment[]
+  organisation    Organisation           @relation(fields: [organisationId], references: [id])
+  approvedByUser  User?                  @relation("PolicyApprovedBy", fields: [approvedBy], references: [id])
+  acknowledgments PolicyAcknowledgment[]
 
   @@map("policies")
 }
 
 model PolicyAcknowledgment {
-  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  policyId        String   @map("policy_id") @db.Uuid
-  staffMemberId   String   @map("staff_member_id") @db.Uuid
-  acknowledged    Boolean  @default(false)
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  policyId         String    @map("policy_id") @db.Uuid
+  staffMemberId    String    @map("staff_member_id") @db.Uuid
+  acknowledged     Boolean   @default(false)
   acknowledgedDate DateTime? @map("acknowledged_date") @db.Date
-  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz()
-  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt        DateTime  @updatedAt @map("updated_at") @db.Timestamptz()
 
   policy Policy @relation(fields: [policyId], references: [id])
 
@@ -1524,29 +1523,29 @@ model PolicyAcknowledgment {
 }
 
 model Complaint {
-  id                           String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  organisationId               String          @map("organisation_id") @db.Uuid
-  dateReceived                 DateTime        @map("date_received") @db.Date
-  complainantName              String          @map("complainant_name")
-  complainantRelationship      String?         @map("complainant_relationship")
-  serviceUserId                String?         @map("service_user_id") @db.Uuid
-  natureOfComplaint            String?         @map("nature_of_complaint") @db.Text
-  investigationCarriedOut      String?         @map("investigation_carried_out") @db.Text
-  investigatedBy               String?         @map("investigated_by") @db.Uuid
-  outcome                      String?         @db.Text
-  actionsTaken                 Json?           @map("actions_taken") @db.JsonB
-  responseSentDate             DateTime?       @map("response_sent_date") @db.Date
-  responseMethod               String?         @map("response_method")
-  referredToCareInspectorate   Boolean         @default(false) @map("referred_to_care_inspectorate")
-  referralDate                 DateTime?       @map("referral_date") @db.Date
-  satisfactionWithOutcome      String?         @map("satisfaction_with_outcome") @db.Text
-  lessonsLearned               String?         @map("lessons_learned") @db.Text
-  status                       ComplaintStatus @default(OPEN)
-  closedDate                   DateTime?       @map("closed_date") @db.Date
-  createdAt                    DateTime        @default(now()) @map("created_at") @db.Timestamptz()
-  updatedAt                    DateTime        @updatedAt @map("updated_at") @db.Timestamptz()
-  createdBy                    String?         @map("created_by") @db.Uuid
-  updatedBy                    String?         @map("updated_by") @db.Uuid
+  id                         String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organisationId             String          @map("organisation_id") @db.Uuid
+  dateReceived               DateTime        @map("date_received") @db.Date
+  complainantName            String          @map("complainant_name")
+  complainantRelationship    String?         @map("complainant_relationship")
+  serviceUserId              String?         @map("service_user_id") @db.Uuid
+  natureOfComplaint          String?         @map("nature_of_complaint") @db.Text
+  investigationCarriedOut    String?         @map("investigation_carried_out") @db.Text
+  investigatedBy             String?         @map("investigated_by") @db.Uuid
+  outcome                    String?         @db.Text
+  actionsTaken               Json?           @map("actions_taken") @db.JsonB
+  responseSentDate           DateTime?       @map("response_sent_date") @db.Date
+  responseMethod             String?         @map("response_method")
+  referredToCareInspectorate Boolean         @default(false) @map("referred_to_care_inspectorate")
+  referralDate               DateTime?       @map("referral_date") @db.Date
+  satisfactionWithOutcome    String?         @map("satisfaction_with_outcome") @db.Text
+  lessonsLearned             String?         @map("lessons_learned") @db.Text
+  status                     ComplaintStatus @default(OPEN)
+  closedDate                 DateTime?       @map("closed_date") @db.Date
+  createdAt                  DateTime        @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt                  DateTime        @updatedAt @map("updated_at") @db.Timestamptz()
+  createdBy                  String?         @map("created_by") @db.Uuid
+  updatedBy                  String?         @map("updated_by") @db.Uuid
 
   organisation       Organisation @relation(fields: [organisationId], references: [id])
   serviceUser        ServiceUser? @relation(fields: [serviceUserId], references: [id])
@@ -1575,54 +1574,54 @@ model Compliment {
 }
 
 model QualityAudit {
-  id               String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  organisationId   String          @map("organisation_id") @db.Uuid
-  auditType        QualityAuditType @map("audit_type")
-  auditDate        DateTime        @map("audit_date") @db.Date
-  auditorId        String?         @map("auditor_id") @db.Uuid
-  findings         Json?           @db.JsonB
-  issues           String?         @db.Text
-  recommendations  String?         @db.Text
-  actionPlan       Json?           @map("action_plan") @db.JsonB
-  status           AuditStatus     @default(OPEN)
-  followUpDate     DateTime?       @map("follow_up_date") @db.Date
-  createdAt        DateTime        @default(now()) @map("created_at") @db.Timestamptz()
-  updatedAt        DateTime        @updatedAt @map("updated_at") @db.Timestamptz()
-  createdBy        String?         @map("created_by") @db.Uuid
-  updatedBy        String?         @map("updated_by") @db.Uuid
+  id              String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organisationId  String           @map("organisation_id") @db.Uuid
+  auditType       QualityAuditType @map("audit_type")
+  auditDate       DateTime         @map("audit_date") @db.Date
+  auditorId       String?          @map("auditor_id") @db.Uuid
+  findings        Json?            @db.JsonB
+  issues          String?          @db.Text
+  recommendations String?          @db.Text
+  actionPlan      Json?            @map("action_plan") @db.JsonB
+  status          AuditStatus      @default(OPEN)
+  followUpDate    DateTime?        @map("follow_up_date") @db.Date
+  createdAt       DateTime         @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt       DateTime         @updatedAt @map("updated_at") @db.Timestamptz()
+  createdBy       String?          @map("created_by") @db.Uuid
+  updatedBy       String?          @map("updated_by") @db.Uuid
 
-  organisation              Organisation                @relation(fields: [organisationId], references: [id])
-  auditor                   User?                       @relation("QualityAuditor", fields: [auditorId], references: [id])
-  careInspInspections       CareInspectorateInspection[]
+  organisation        Organisation                 @relation(fields: [organisationId], references: [id])
+  auditor             User?                        @relation("QualityAuditor", fields: [auditorId], references: [id])
+  careInspInspections CareInspectorateInspection[]
 
   @@map("quality_audits")
 }
 
 model CareInspectorateInspection {
-  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  organisationId   String    @map("organisation_id") @db.Uuid
-  inspectionDate   DateTime  @map("inspection_date") @db.Date
-  inspectorName    String?   @map("inspector_name")
-  grades           Json?     @db.JsonB
-  reportSummary    String?   @map("report_summary") @db.Text
-  requirements     Json?     @db.JsonB
-  recommendations  Json?     @db.JsonB
-  actionPlanId     String?   @map("action_plan_id") @db.Uuid
-  reportDocumentId String?   @map("report_document_id") @db.Uuid // FK to files — raw UUID
-  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz()
-  updatedAt        DateTime  @updatedAt @map("updated_at") @db.Timestamptz()
-  createdBy        String?   @map("created_by") @db.Uuid
-  updatedBy        String?   @map("updated_by") @db.Uuid
+  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organisationId   String   @map("organisation_id") @db.Uuid
+  inspectionDate   DateTime @map("inspection_date") @db.Date
+  inspectorName    String?  @map("inspector_name")
+  grades           Json?    @db.JsonB
+  reportSummary    String?  @map("report_summary") @db.Text
+  requirements     Json?    @db.JsonB
+  recommendations  Json?    @db.JsonB
+  actionPlanId     String?  @map("action_plan_id") @db.Uuid
+  reportDocumentId String?  @map("report_document_id") @db.Uuid // FK to files — raw UUID
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt        DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+  createdBy        String?  @map("created_by") @db.Uuid
+  updatedBy        String?  @map("updated_by") @db.Uuid
 
-  organisation Organisation @relation(fields: [organisationId], references: [id])
+  organisation Organisation  @relation(fields: [organisationId], references: [id])
   actionPlan   QualityAudit? @relation(fields: [actionPlanId], references: [id])
 
   @@map("care_inspectorate_inspections")
 }
 
 model EquipmentCheck {
-  id                    String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  organisationId        String       @map("organisation_id") @db.Uuid
+  id                    String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organisationId        String        @map("organisation_id") @db.Uuid
   equipmentType         EquipmentType @map("equipment_type")
   equipmentName         String        @map("equipment_name")
   serialNumber          String?       @map("serial_number")
@@ -1645,19 +1644,19 @@ model EquipmentCheck {
 }
 
 model SatisfactionSurvey {
-  id                   String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  organisationId       String     @map("organisation_id") @db.Uuid
-  serviceUserId        String?    @map("service_user_id") @db.Uuid
-  surveyDate           DateTime   @map("survey_date") @db.Date
-  surveyType           SurveyType @map("survey_type")
-  responses            Json?      @db.JsonB
-  overallRating        Int?       @map("overall_rating")
-  comments             String?    @db.Text
-  actionsFromFeedback  String?    @map("actions_from_feedback") @db.Text
-  createdAt            DateTime   @default(now()) @map("created_at") @db.Timestamptz()
-  updatedAt            DateTime   @updatedAt @map("updated_at") @db.Timestamptz()
-  createdBy            String?    @map("created_by") @db.Uuid
-  updatedBy            String?    @map("updated_by") @db.Uuid
+  id                  String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organisationId      String     @map("organisation_id") @db.Uuid
+  serviceUserId       String?    @map("service_user_id") @db.Uuid
+  surveyDate          DateTime   @map("survey_date") @db.Date
+  surveyType          SurveyType @map("survey_type")
+  responses           Json?      @db.JsonB
+  overallRating       Int?       @map("overall_rating")
+  comments            String?    @db.Text
+  actionsFromFeedback String?    @map("actions_from_feedback") @db.Text
+  createdAt           DateTime   @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt           DateTime   @updatedAt @map("updated_at") @db.Timestamptz()
+  createdBy           String?    @map("created_by") @db.Uuid
+  updatedBy           String?    @map("updated_by") @db.Uuid
 
   organisation Organisation @relation(fields: [organisationId], references: [id])
   serviceUser  ServiceUser? @relation(fields: [serviceUserId], references: [id])
@@ -1666,24 +1665,24 @@ model SatisfactionSurvey {
 }
 
 model AnnualReturn {
-  id                   String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  organisationId       String             @map("organisation_id") @db.Uuid
-  year                 Int
-  submissionDate       DateTime?          @map("submission_date") @db.Date
-  deadlineDate         DateTime?          @map("deadline_date") @db.Date
-  serviceUserCount     Int?               @map("service_user_count")
-  staffCount           Int?               @map("staff_count")
-  selfEvaluation       String?            @map("self_evaluation") @db.Text
-  complaintsSummary    String?            @map("complaints_summary") @db.Text
-  incidentsSummary     String?            @map("incidents_summary") @db.Text
-  improvementsMade     String?            @map("improvements_made") @db.Text
-  plannedImprovements  String?            @map("planned_improvements") @db.Text
-  documentId           String?            @map("document_id") @db.Uuid // FK to files — raw UUID
-  status               AnnualReturnStatus @default(DRAFT)
-  createdAt            DateTime           @default(now()) @map("created_at") @db.Timestamptz()
-  updatedAt            DateTime           @updatedAt @map("updated_at") @db.Timestamptz()
-  createdBy            String?            @map("created_by") @db.Uuid
-  updatedBy            String?            @map("updated_by") @db.Uuid
+  id                  String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organisationId      String             @map("organisation_id") @db.Uuid
+  year                Int
+  submissionDate      DateTime?          @map("submission_date") @db.Date
+  deadlineDate        DateTime?          @map("deadline_date") @db.Date
+  serviceUserCount    Int?               @map("service_user_count")
+  staffCount          Int?               @map("staff_count")
+  selfEvaluation      String?            @map("self_evaluation") @db.Text
+  complaintsSummary   String?            @map("complaints_summary") @db.Text
+  incidentsSummary    String?            @map("incidents_summary") @db.Text
+  improvementsMade    String?            @map("improvements_made") @db.Text
+  plannedImprovements String?            @map("planned_improvements") @db.Text
+  documentId          String?            @map("document_id") @db.Uuid // FK to files — raw UUID
+  status              AnnualReturnStatus @default(DRAFT)
+  createdAt           DateTime           @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt           DateTime           @updatedAt @map("updated_at") @db.Timestamptz()
+  createdBy           String?            @map("created_by") @db.Uuid
+  updatedBy           String?            @map("updated_by") @db.Uuid
 
   organisation Organisation @relation(fields: [organisationId], references: [id])
 
@@ -1716,16 +1715,16 @@ model RotaShift {
 }
 
 model RotaAvailability {
-  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  staffMemberId String   @map("staff_member_id") @db.Uuid
-  dayOfWeek     Int      @map("day_of_week") // 0 = Sunday, 6 = Saturday
-  availableFrom String   @map("available_from") // e.g. "08:00"
-  availableTo   String   @map("available_to")
-  isAvailable   Boolean  @default(true) @map("is_available")
-  effectiveFrom DateTime @map("effective_from") @db.Date
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  staffMemberId String    @map("staff_member_id") @db.Uuid
+  dayOfWeek     Int       @map("day_of_week") // 0 = Sunday, 6 = Saturday
+  availableFrom String    @map("available_from") // e.g. "08:00"
+  availableTo   String    @map("available_to")
+  isAvailable   Boolean   @default(true) @map("is_available")
+  effectiveFrom DateTime  @map("effective_from") @db.Date
   effectiveTo   DateTime? @map("effective_to") @db.Date
-  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz()
-  updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt     DateTime  @updatedAt @map("updated_at") @db.Timestamptz()
 
   staffMember StaffMember @relation(fields: [staffMemberId], references: [id])
 
@@ -1737,32 +1736,32 @@ model RotaAvailability {
 // ─────────────────────────────────────────────
 
 model Funder {
-  id                 String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  organisationId     String           @map("organisation_id") @db.Uuid
-  name               String
-  funderType         FunderType       @map("funder_type")
-  contactName        String?          @map("contact_name")
-  contactEmail       String?          @map("contact_email")
-  contactPhone       String?          @map("contact_phone")
-  addressLine1       String?          @map("address_line1")
-  addressLine2       String?          @map("address_line2")
-  city               String?
-  postcode           String?
-  paymentTermsDays   Int              @default(30) @map("payment_terms_days")
-  invoiceFrequency   InvoiceFrequency @default(MONTHLY) @map("invoice_frequency")
-  billingTimeBasis   BillingTimeBasis @default(SCHEDULED) @map("billing_time_basis")
-  notes              String?          @db.Text
-  isActive           Boolean          @default(true) @map("is_active")
-  createdAt          DateTime         @default(now()) @map("created_at") @db.Timestamptz()
-  updatedAt          DateTime         @updatedAt @map("updated_at") @db.Timestamptz()
-  createdBy          String?          @map("created_by") @db.Uuid
-  updatedBy          String?          @map("updated_by") @db.Uuid
+  id               String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organisationId   String           @map("organisation_id") @db.Uuid
+  name             String
+  funderType       FunderType       @map("funder_type")
+  contactName      String?          @map("contact_name")
+  contactEmail     String?          @map("contact_email")
+  contactPhone     String?          @map("contact_phone")
+  addressLine1     String?          @map("address_line1")
+  addressLine2     String?          @map("address_line2")
+  city             String?
+  postcode         String?
+  paymentTermsDays Int              @default(30) @map("payment_terms_days")
+  invoiceFrequency InvoiceFrequency @default(MONTHLY) @map("invoice_frequency")
+  billingTimeBasis BillingTimeBasis @default(SCHEDULED) @map("billing_time_basis")
+  notes            String?          @db.Text
+  isActive         Boolean          @default(true) @map("is_active")
+  createdAt        DateTime         @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt        DateTime         @updatedAt @map("updated_at") @db.Timestamptz()
+  createdBy        String?          @map("created_by") @db.Uuid
+  updatedBy        String?          @map("updated_by") @db.Uuid
 
-  organisation  Organisation   @relation(fields: [organisationId], references: [id])
-  rateCards     RateCard[]
-  carePackages  CarePackage[]
-  invoices      Invoice[]
-  creditNotes   CreditNote[]
+  organisation Organisation  @relation(fields: [organisationId], references: [id])
+  rateCards    RateCard[]
+  carePackages CarePackage[]
+  invoices     Invoice[]
+  creditNotes  CreditNote[]
 
   @@map("funders")
 }
@@ -1781,27 +1780,27 @@ model RateCard {
   createdBy      String?   @map("created_by") @db.Uuid
   updatedBy      String?   @map("updated_by") @db.Uuid
 
-  organisation  Organisation   @relation(fields: [organisationId], references: [id])
-  funder        Funder?        @relation(fields: [funderId], references: [id])
-  lines         RateCardLine[]
-  mileageRates  MileageRate[]
-  carePackages  CarePackage[]
+  organisation Organisation   @relation(fields: [organisationId], references: [id])
+  funder       Funder?        @relation(fields: [funderId], references: [id])
+  lines        RateCardLine[]
+  mileageRates MileageRate[]
+  carePackages CarePackage[]
 
   @@map("rate_cards")
 }
 
 model RateCardLine {
-  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  rateCardId      String   @map("rate_card_id") @db.Uuid
-  organisationId  String   @map("organisation_id") @db.Uuid
-  dayType         DayType  @map("day_type")
-  timeBandStart   String?  @map("time_band_start") // "HH:mm"
-  timeBandEnd     String?  @map("time_band_end")
-  ratePerHour     Decimal  @map("rate_per_hour") @db.Decimal(10, 2)
-  carersRequired  Int      @default(1) @map("carers_required")
-  description     String?
-  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz()
-  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  rateCardId     String   @map("rate_card_id") @db.Uuid
+  organisationId String   @map("organisation_id") @db.Uuid
+  dayType        DayType  @map("day_type")
+  timeBandStart  String?  @map("time_band_start") // "HH:mm"
+  timeBandEnd    String?  @map("time_band_end")
+  ratePerHour    Decimal  @map("rate_per_hour") @db.Decimal(10, 2)
+  carersRequired Int      @default(1) @map("carers_required")
+  description    String?
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz()
 
   rateCard RateCard @relation(fields: [rateCardId], references: [id], onDelete: Cascade)
 
@@ -1844,51 +1843,51 @@ model CarePackage {
   createdBy                String?           @map("created_by") @db.Uuid
   updatedBy                String?           @map("updated_by") @db.Uuid
 
-  organisation    Organisation      @relation(fields: [organisationId], references: [id])
-  serviceUser     ServiceUser       @relation(fields: [serviceUserId], references: [id])
-  funder          Funder            @relation(fields: [funderId], references: [id])
-  rateCard        RateCard          @relation(fields: [rateCardId], references: [id])
+  organisation     Organisation      @relation(fields: [organisationId], references: [id])
+  serviceUser      ServiceUser       @relation(fields: [serviceUserId], references: [id])
+  funder           Funder            @relation(fields: [funderId], references: [id])
+  rateCard         RateCard          @relation(fields: [rateCardId], references: [id])
   careVisitRecords CareVisitRecord[]
-  billableVisits  BillableVisit[]
-  invoiceLines    InvoiceLine[]
-  visitSchedules  VisitSchedule[]
+  billableVisits   BillableVisit[]
+  invoiceLines     InvoiceLine[]
+  visitSchedules   VisitSchedule[]
 
   @@map("care_packages")
 }
 
 model BillableVisit {
-  id                     String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  organisationId         String             @map("organisation_id") @db.Uuid
-  careVisitRecordId      String             @unique @map("care_visit_record_id") @db.Uuid
-  carePackageId          String             @map("care_package_id") @db.Uuid
-  serviceUserId          String             @map("service_user_id") @db.Uuid
-  visitDate              DateTime           @map("visit_date") @db.Date
-  scheduledStart         DateTime           @map("scheduled_start") @db.Timestamptz()
-  scheduledEnd           DateTime           @map("scheduled_end") @db.Timestamptz()
-  actualStart            DateTime?          @map("actual_start") @db.Timestamptz()
-  actualEnd              DateTime?          @map("actual_end") @db.Timestamptz()
-  billingStart           DateTime           @map("billing_start") @db.Timestamptz()
-  billingEnd             DateTime           @map("billing_end") @db.Timestamptz()
-  billingDurationMinutes Int                @map("billing_duration_minutes")
-  carersRequired         Int                @default(1) @map("carers_required")
-  dayType                DayType            @map("day_type")
-  appliedRatePerHour     Decimal            @map("applied_rate_per_hour") @db.Decimal(10, 2)
-  lineTotal              Decimal            @map("line_total") @db.Decimal(10, 2)
-  mileageMiles           Decimal?           @map("mileage_miles") @db.Decimal(8, 2)
-  mileageRate            Decimal?           @map("mileage_rate") @db.Decimal(10, 4)
-  mileageTotal           Decimal?           @map("mileage_total") @db.Decimal(10, 2)
-  visitTotal             Decimal            @map("visit_total") @db.Decimal(10, 2)
+  id                     String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organisationId         String              @map("organisation_id") @db.Uuid
+  careVisitRecordId      String              @unique @map("care_visit_record_id") @db.Uuid
+  carePackageId          String              @map("care_package_id") @db.Uuid
+  serviceUserId          String              @map("service_user_id") @db.Uuid
+  visitDate              DateTime            @map("visit_date") @db.Date
+  scheduledStart         DateTime            @map("scheduled_start") @db.Timestamptz()
+  scheduledEnd           DateTime            @map("scheduled_end") @db.Timestamptz()
+  actualStart            DateTime?           @map("actual_start") @db.Timestamptz()
+  actualEnd              DateTime?           @map("actual_end") @db.Timestamptz()
+  billingStart           DateTime            @map("billing_start") @db.Timestamptz()
+  billingEnd             DateTime            @map("billing_end") @db.Timestamptz()
+  billingDurationMinutes Int                 @map("billing_duration_minutes")
+  carersRequired         Int                 @default(1) @map("carers_required")
+  dayType                DayType             @map("day_type")
+  appliedRatePerHour     Decimal             @map("applied_rate_per_hour") @db.Decimal(10, 2)
+  lineTotal              Decimal             @map("line_total") @db.Decimal(10, 2)
+  mileageMiles           Decimal?            @map("mileage_miles") @db.Decimal(8, 2)
+  mileageRate            Decimal?            @map("mileage_rate") @db.Decimal(10, 4)
+  mileageTotal           Decimal?            @map("mileage_total") @db.Decimal(10, 2)
+  visitTotal             Decimal             @map("visit_total") @db.Decimal(10, 2)
   status                 BillableVisitStatus @default(PENDING)
-  disputeReason          String?            @map("dispute_reason") @db.Text
-  overrideAmount         Decimal?           @map("override_amount") @db.Decimal(10, 2)
-  overrideReason         String?            @map("override_reason") @db.Text
-  approvedById           String?            @map("approved_by_id") @db.Uuid
-  approvedAt             DateTime?          @map("approved_at") @db.Timestamptz()
-  invoiceLineId          String?            @map("invoice_line_id") @db.Uuid
-  createdAt              DateTime           @default(now()) @map("created_at") @db.Timestamptz()
-  updatedAt              DateTime           @updatedAt @map("updated_at") @db.Timestamptz()
-  createdBy              String?            @map("created_by") @db.Uuid
-  updatedBy              String?            @map("updated_by") @db.Uuid
+  disputeReason          String?             @map("dispute_reason") @db.Text
+  overrideAmount         Decimal?            @map("override_amount") @db.Decimal(10, 2)
+  overrideReason         String?             @map("override_reason") @db.Text
+  approvedById           String?             @map("approved_by_id") @db.Uuid
+  approvedAt             DateTime?           @map("approved_at") @db.Timestamptz()
+  invoiceLineId          String?             @map("invoice_line_id") @db.Uuid
+  createdAt              DateTime            @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt              DateTime            @updatedAt @map("updated_at") @db.Timestamptz()
+  createdBy              String?             @map("created_by") @db.Uuid
+  updatedBy              String?             @map("updated_by") @db.Uuid
 
   organisation    Organisation    @relation(fields: [organisationId], references: [id])
   careVisitRecord CareVisitRecord @relation(fields: [careVisitRecordId], references: [id])
@@ -1973,20 +1972,20 @@ model Invoice {
 }
 
 model InvoiceLine {
-  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  invoiceId      String   @map("invoice_id") @db.Uuid
-  serviceUserId  String   @map("service_user_id") @db.Uuid
-  carePackageId  String   @map("care_package_id") @db.Uuid
-  description    String?
-  totalVisits    Int      @default(0) @map("total_visits")
-  totalHours     Decimal  @default(0) @map("total_hours") @db.Decimal(10, 2)
-  totalMileage   Decimal  @default(0) @map("total_mileage") @db.Decimal(10, 2)
-  careTotal      Decimal  @default(0) @map("care_total") @db.Decimal(10, 2)
-  mileageTotal   Decimal  @default(0) @map("mileage_total") @db.Decimal(10, 2)
-  lineTotal      Decimal  @default(0) @map("line_total") @db.Decimal(10, 2)
-  notes          String?  @db.Text
-  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz()
-  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  invoiceId     String   @map("invoice_id") @db.Uuid
+  serviceUserId String   @map("service_user_id") @db.Uuid
+  carePackageId String   @map("care_package_id") @db.Uuid
+  description   String?
+  totalVisits   Int      @default(0) @map("total_visits")
+  totalHours    Decimal  @default(0) @map("total_hours") @db.Decimal(10, 2)
+  totalMileage  Decimal  @default(0) @map("total_mileage") @db.Decimal(10, 2)
+  careTotal     Decimal  @default(0) @map("care_total") @db.Decimal(10, 2)
+  mileageTotal  Decimal  @default(0) @map("mileage_total") @db.Decimal(10, 2)
+  lineTotal     Decimal  @default(0) @map("line_total") @db.Decimal(10, 2)
+  notes         String?  @db.Text
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz()
 
   invoice        Invoice         @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
   serviceUser    ServiceUser     @relation(fields: [serviceUserId], references: [id])
@@ -2040,8 +2039,8 @@ model File {
   createdAt       DateTime        @default(now()) @map("created_at") @db.Timestamptz()
   updatedAt       DateTime        @updatedAt @map("updated_at") @db.Timestamptz()
 
-  organisation  Organisation @relation(fields: [organisationId], references: [id])
-  uploadedByUser User?       @relation(fields: [uploadedBy], references: [id])
+  organisation   Organisation @relation(fields: [organisationId], references: [id])
+  uploadedByUser User?        @relation(fields: [uploadedBy], references: [id])
 
   @@map("files")
 }

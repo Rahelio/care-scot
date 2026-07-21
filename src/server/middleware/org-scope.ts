@@ -76,9 +76,11 @@ const SCOPED_WHERE_OPS = new Set([
 
 /**
  * Single-record mutation/lookup operations that rely on a unique key in `where`.
- * Auto-injecting `organisationId` here would corrupt the unique-key constraint
- * lookup. Callers are responsible for org validation. In dev we warn when the
- * filter is absent.
+ * Prisma supports filtering a unique query by additional non-unique fields
+ * (stable since v4.16), so `organisationId` can be safely appended alongside
+ * the unique key without corrupting the lookup — it just narrows it. A row
+ * belonging to another organisation now behaves exactly like a nonexistent
+ * one (`P2025`/`RecordNotFound`) instead of being reachable across tenants.
  */
 const UNIQUE_OPS = new Set([
   "findUnique",
@@ -94,7 +96,9 @@ type AnyArgs = Record<string, unknown>;
  * Returns an org-scoped Prisma client that:
  *  - Auto-adds `{ organisationId }` to `where` on all list/count/many-write ops
  *  - Auto-sets `data.organisationId` on create / createMany
- *  - Warns (dev only) when single-record ops lack an org filter
+ *  - Auto-appends `organisationId` to `where` on single-record ops (findUnique,
+ *    update, delete, upsert), so cross-org access fails as a not-found rather
+ *    than succeeding
  *
  * Use via `ctx.db` in every `protectedProcedure`. The base `ctx.prisma` remains
  * available for super-admin cross-org operations.
@@ -144,18 +148,15 @@ export function createOrgScopedPrisma(organisationId: string) {
             };
           }
 
-          // ── Single-record ops: warn in dev if org filter is absent ─────────
-          if (
-            UNIQUE_OPS.has(operation) &&
-            process.env.NODE_ENV !== "production"
-          ) {
-            const where = args.where as AnyArgs | undefined;
-            if (where?.organisationId !== organisationId) {
-              console.warn(
-                `[org-scope] ⚠ ${model}.${operation} called without organisationId ` +
-                  `in where. Caller must verify the record belongs to org ${organisationId}.`,
-              );
-            }
+          // ── Single-record ops: append organisationId to the where clause ───
+          // Narrows the unique-key lookup rather than replacing it, so a
+          // record belonging to another org simply isn't found (P2025)
+          // instead of being readable/writable across tenants.
+          if (UNIQUE_OPS.has(operation)) {
+            args = {
+              ...args,
+              where: { ...(args.where as AnyArgs | undefined), organisationId },
+            };
           }
 
           return query(args);
