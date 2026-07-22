@@ -6,12 +6,8 @@ export const notificationsRouter = router({
    * Unread notifications for the current user — used by the bell badge.
    */
   getUnread: protectedProcedure.query(async ({ ctx }) => {
-    const { id: userId, organisationId } = ctx.user as {
-      id: string;
-      organisationId: string;
-    };
-    return ctx.prisma.notification.findMany({
-      where: { userId, organisationId, isRead: false },
+    return ctx.db.notification.findMany({
+      where: { userId: ctx.user.id, isRead: false },
       orderBy: { createdAt: "desc" },
     });
   }),
@@ -22,12 +18,8 @@ export const notificationsRouter = router({
   getAll: protectedProcedure
     .input(z.object({ limit: z.number().min(1).max(100).default(50) }))
     .query(async ({ ctx, input }) => {
-      const { id: userId, organisationId } = ctx.user as {
-        id: string;
-        organisationId: string;
-      };
-      return ctx.prisma.notification.findMany({
-        where: { userId, organisationId },
+      return ctx.db.notification.findMany({
+        where: { userId: ctx.user.id },
         orderBy: { createdAt: "desc" },
         take: input.limit,
       });
@@ -39,9 +31,8 @@ export const notificationsRouter = router({
   markRead: protectedProcedure
     .input(z.object({ id: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {
-      const { id: userId } = ctx.user as { id: string };
-      await ctx.prisma.notification.updateMany({
-        where: { id: input.id, userId },
+      await ctx.db.notification.updateMany({
+        where: { id: input.id, userId: ctx.user.id },
         data: { isRead: true, readAt: new Date() },
       });
       return { success: true };
@@ -51,12 +42,8 @@ export const notificationsRouter = router({
    * Mark all notifications as read for the current user.
    */
   markAllRead: protectedProcedure.mutation(async ({ ctx }) => {
-    const { id: userId, organisationId } = ctx.user as {
-      id: string;
-      organisationId: string;
-    };
-    await ctx.prisma.notification.updateMany({
-      where: { userId, organisationId, isRead: false },
+    await ctx.db.notification.updateMany({
+      where: { userId: ctx.user.id, isRead: false },
       data: { isRead: true, readAt: new Date() },
     });
     return { success: true };
