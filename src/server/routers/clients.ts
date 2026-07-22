@@ -21,11 +21,9 @@ export const clientsRouter = router({
       })
     )
     .query(async ({ ctx, input }) => {
-      const { organisationId } = ctx.user as { organisationId: string };
       const skip = (input.page - 1) * input.limit;
 
       const where = {
-        organisationId,
         ...(input.status && { status: input.status }),
         ...(input.search && {
           OR: [
@@ -37,7 +35,7 @@ export const clientsRouter = router({
       };
 
       const [rawItems, total] = await Promise.all([
-        ctx.prisma.serviceUser.findMany({
+        ctx.db.serviceUser.findMany({
           where,
           skip,
           take: input.limit,
@@ -65,7 +63,7 @@ export const clientsRouter = router({
             },
           },
         }),
-        ctx.prisma.serviceUser.count({ where }),
+        ctx.db.serviceUser.count({ where }),
       ]);
 
       const items = rawItems.map(({ _count, riskAssessments, ...rest }) => {
@@ -91,11 +89,9 @@ export const clientsRouter = router({
   getProfile: protectedProcedure
     .input(z.object({ id: z.string().min(1) }))
     .query(async ({ ctx, input }) => {
-      const { organisationId } = ctx.user as { organisationId: string };
-
       const [serviceUser, activePlanCount] = await Promise.all([
-        ctx.prisma.serviceUser.findUniqueOrThrow({
-          where: { id: input.id, organisationId },
+        ctx.db.serviceUser.findUniqueOrThrow({
+          where: { id: input.id },
           select: {
             id: true,
             firstName: true,
@@ -106,7 +102,7 @@ export const clientsRouter = router({
             createdAt: true,
           },
         }),
-        ctx.prisma.personalPlan.count({
+        ctx.db.personalPlan.count({
           where: { serviceUserId: input.id, status: "ACTIVE" },
         }),
       ]);
@@ -117,9 +113,8 @@ export const clientsRouter = router({
   getById: protectedProcedure
     .input(z.object({ id: z.string().min(1) }))
     .query(async ({ ctx, input }) => {
-      const { organisationId } = ctx.user as { organisationId: string };
-      return ctx.prisma.serviceUser.findUniqueOrThrow({
-        where: { id: input.id, organisationId },
+      return ctx.db.serviceUser.findUniqueOrThrow({
+        where: { id: input.id },
         include: {
           contacts: { orderBy: { isNextOfKin: "desc" } },
           healthcareProfessionals: true,
@@ -147,15 +142,11 @@ export const clientsRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const { organisationId, id: userId } = ctx.user as {
-        organisationId: string;
-        id: string;
-      };
       const data = { ...input, email: input.email || undefined };
 
       if (input.chiNumber) {
-        const existing = await ctx.prisma.serviceUser.findFirst({
-          where: { organisationId, chiNumber: input.chiNumber },
+        const existing = await ctx.db.serviceUser.findFirst({
+          where: { chiNumber: input.chiNumber },
           select: { firstName: true, lastName: true },
         });
         if (existing) {
@@ -166,8 +157,8 @@ export const clientsRouter = router({
         }
       }
 
-      return ctx.prisma.serviceUser.create({
-        data: { ...data, organisationId, createdBy: userId, updatedBy: userId },
+      return ctx.db.serviceUser.create({
+        data: { ...data, organisationId: ctx.user.organisationId, createdBy: ctx.user.id, updatedBy: ctx.user.id },
       });
     }),
 
@@ -181,14 +172,10 @@ export const clientsRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const { organisationId, id: userId } = ctx.user as {
-        organisationId: string;
-        id: string;
-      };
       const { id, ...data } = input;
-      return ctx.prisma.serviceUser.update({
-        where: { id, organisationId },
-        data: { ...data, updatedBy: userId },
+      return ctx.db.serviceUser.update({
+        where: { id },
+        data: { ...data, updatedBy: ctx.user.id },
       });
     }),
 
@@ -223,15 +210,11 @@ export const clientsRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const { organisationId, id: userId } = ctx.user as {
-        organisationId: string;
-        id: string;
-      };
       const { id, email, ...rest } = input;
 
       if (input.chiNumber) {
-        const existing = await ctx.prisma.serviceUser.findFirst({
-          where: { organisationId, chiNumber: input.chiNumber, NOT: { id } },
+        const existing = await ctx.db.serviceUser.findFirst({
+          where: { chiNumber: input.chiNumber, NOT: { id } },
           select: { firstName: true, lastName: true },
         });
         if (existing) {
@@ -242,9 +225,9 @@ export const clientsRouter = router({
         }
       }
 
-      return ctx.prisma.serviceUser.update({
-        where: { id, organisationId },
-        data: { ...rest, email: email || undefined, updatedBy: userId },
+      return ctx.db.serviceUser.update({
+        where: { id },
+        data: { ...rest, email: email || undefined, updatedBy: ctx.user.id },
       });
     }),
 
@@ -269,18 +252,14 @@ export const clientsRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const { organisationId, id: userId } = ctx.user as {
-        organisationId: string;
-        id: string;
-      };
       const { email, ...rest } = input;
-      return ctx.prisma.serviceUserContact.create({
+      return ctx.db.serviceUserContact.create({
         data: {
           ...rest,
           email: email || undefined,
-          organisationId,
-          createdBy: userId,
-          updatedBy: userId,
+          organisationId: ctx.user.organisationId,
+          createdBy: ctx.user.id,
+          updatedBy: ctx.user.id,
         },
       });
     }),
@@ -302,18 +281,17 @@ export const clientsRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const { id: userId } = ctx.user as { id: string };
       const { id, email, ...rest } = input;
-      return ctx.prisma.serviceUserContact.update({
+      return ctx.db.serviceUserContact.update({
         where: { id },
-        data: { ...rest, email: email || undefined, updatedBy: userId },
+        data: { ...rest, email: email || undefined, updatedBy: ctx.user.id },
       });
     }),
 
   removeContact: protectedProcedure
     .input(z.object({ id: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {
-      return ctx.prisma.serviceUserContact.delete({ where: { id: input.id } });
+      return ctx.db.serviceUserContact.delete({ where: { id: input.id } });
     }),
 
   // ─────────────────────────────────────────
@@ -333,18 +311,14 @@ export const clientsRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const { organisationId, id: userId } = ctx.user as {
-        organisationId: string;
-        id: string;
-      };
       const { email, ...rest } = input;
-      return ctx.prisma.serviceUserHealthcareProfessional.create({
+      return ctx.db.serviceUserHealthcareProfessional.create({
         data: {
           ...rest,
           email: email || undefined,
-          organisationId,
-          createdBy: userId,
-          updatedBy: userId,
+          organisationId: ctx.user.organisationId,
+          createdBy: ctx.user.id,
+          updatedBy: ctx.user.id,
         },
       });
     }),
@@ -352,7 +326,7 @@ export const clientsRouter = router({
   removeHealthcareProfessional: protectedProcedure
     .input(z.object({ id: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {
-      return ctx.prisma.serviceUserHealthcareProfessional.delete({
+      return ctx.db.serviceUserHealthcareProfessional.delete({
         where: { id: input.id },
       });
     }),
@@ -364,9 +338,8 @@ export const clientsRouter = router({
   listPersonalPlans: protectedProcedure
     .input(z.object({ serviceUserId: z.string().min(1) }))
     .query(async ({ ctx, input }) => {
-      const { organisationId } = ctx.user as { organisationId: string };
-      return ctx.prisma.personalPlan.findMany({
-        where: { serviceUserId: input.serviceUserId, organisationId },
+      return ctx.db.personalPlan.findMany({
+        where: { serviceUserId: input.serviceUserId },
         orderBy: { planVersion: "desc" },
         include: {
           approvedByUser: { select: { name: true, email: true } },
@@ -394,40 +367,32 @@ export const clientsRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const { organisationId, id: userId } = ctx.user as {
-        organisationId: string;
-        id: string;
-      };
-
-      const [latestPlan] = await ctx.prisma.$transaction([
-        ctx.prisma.personalPlan.findFirst({
-          where: { serviceUserId: input.serviceUserId, organisationId },
-          orderBy: { planVersion: "desc" },
-          select: { planVersion: true },
-        }),
-      ]);
+      const latestPlan = await ctx.db.personalPlan.findFirst({
+        where: { serviceUserId: input.serviceUserId },
+        orderBy: { planVersion: "desc" },
+        select: { planVersion: true },
+      });
 
       const planVersion = (latestPlan?.planVersion ?? 0) + 1;
 
       // Supersede any existing ACTIVE plans
-      await ctx.prisma.personalPlan.updateMany({
+      await ctx.db.personalPlan.updateMany({
         where: {
           serviceUserId: input.serviceUserId,
-          organisationId,
           status: "ACTIVE",
         },
         data: { status: "SUPERSEDED" },
       });
 
-      return ctx.prisma.personalPlan.create({
+      return ctx.db.personalPlan.create({
         data: {
           ...input,
-          organisationId,
+          organisationId: ctx.user.organisationId,
           planVersion,
           createdDate: new Date(),
           status: "DRAFT",
-          createdBy: userId,
-          updatedBy: userId,
+          createdBy: ctx.user.id,
+          updatedBy: ctx.user.id,
         },
       });
     }),
@@ -451,12 +416,8 @@ export const clientsRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const { organisationId, id: userId } = ctx.user as {
-        organisationId: string;
-        id: string;
-      };
-      const existing = await ctx.prisma.personalPlan.findUniqueOrThrow({
-        where: { id: input.id, organisationId },
+      const existing = await ctx.db.personalPlan.findUniqueOrThrow({
+        where: { id: input.id },
         select: { status: true },
       });
       if (existing.status !== "DRAFT") {
@@ -466,18 +427,17 @@ export const clientsRouter = router({
         });
       }
       const { id, ...data } = input;
-      return ctx.prisma.personalPlan.update({
+      return ctx.db.personalPlan.update({
         where: { id },
-        data: { ...data, updatedBy: userId },
+        data: { ...data, updatedBy: ctx.user.id },
       });
     }),
 
   getActivePlan: protectedProcedure
     .input(z.object({ serviceUserId: z.string().min(1) }))
     .query(async ({ ctx, input }) => {
-      const { organisationId } = ctx.user as { organisationId: string };
-      return ctx.prisma.personalPlan.findFirst({
-        where: { serviceUserId: input.serviceUserId, organisationId, status: "ACTIVE" },
+      return ctx.db.personalPlan.findFirst({
+        where: { serviceUserId: input.serviceUserId, status: "ACTIVE" },
         include: {
           approvedByUser: { select: { name: true, email: true } },
           createdByUser: { select: { name: true, email: true } },
@@ -493,25 +453,19 @@ export const clientsRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const { organisationId, id: userId } = ctx.user as {
-        organisationId: string;
-        id: string;
-      };
-
       const [plan, serviceUser, managers] = await Promise.all([
-        ctx.prisma.personalPlan.findUniqueOrThrow({
-          where: { id: input.planId, organisationId },
+        ctx.db.personalPlan.findUniqueOrThrow({
+          where: { id: input.planId },
           select: { status: true, planVersion: true },
         }),
-        ctx.prisma.serviceUser.findUniqueOrThrow({
-          where: { id: input.serviceUserId, organisationId },
+        ctx.db.serviceUser.findUniqueOrThrow({
+          where: { id: input.serviceUserId },
           select: { firstName: true, lastName: true },
         }),
-        ctx.prisma.user.findMany({
+        ctx.db.user.findMany({
           where: {
-            organisationId,
             role: { in: ["MANAGER", "ORG_ADMIN"] },
-            id: { not: userId },
+            id: { not: ctx.user.id },
           },
           select: { id: true },
         }),
@@ -523,10 +477,10 @@ export const clientsRouter = router({
 
       if (managers.length === 0) return { notified: 0 };
 
-      await ctx.prisma.notification.createMany({
+      await ctx.db.notification.createMany({
         data: managers.map((m) => ({
           userId: m.id,
-          organisationId,
+          organisationId: ctx.user.organisationId,
           title: "Personal plan ready for approval",
           message: `v${plan.planVersion} personal plan for ${serviceUser.firstName} ${serviceUser.lastName} is ready for review and approval.`,
           entityType: "personal_plan",
@@ -541,20 +495,19 @@ export const clientsRouter = router({
   approvePlan: protectedProcedure
     .input(z.object({ id: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {
-      const { id: userId, role } = ctx.user as { id: string; role: string };
-      if (!MANAGER_ROLES.includes(role as never)) {
+      if (!MANAGER_ROLES.includes(ctx.user.role as never)) {
         throw new TRPCError({
           code: "FORBIDDEN",
           message: "Only managers can approve personal plans",
         });
       }
-      return ctx.prisma.personalPlan.update({
+      return ctx.db.personalPlan.update({
         where: { id: input.id },
         data: {
           status: "ACTIVE",
-          approvedBy: userId,
+          approvedBy: ctx.user.id,
           approvedAt: new Date(),
-          updatedBy: userId,
+          updatedBy: ctx.user.id,
         },
       });
     }),
@@ -571,11 +524,9 @@ export const clientsRouter = router({
       })
     )
     .query(async ({ ctx, input }) => {
-      const { organisationId } = ctx.user as { organisationId: string };
-      return ctx.prisma.riskAssessment.findMany({
+      return ctx.db.riskAssessment.findMany({
         where: {
           serviceUserId: input.serviceUserId,
-          organisationId,
           status: input.status ?? "ACTIVE",
         },
         orderBy: { assessmentDate: "desc" },
@@ -599,30 +550,24 @@ export const clientsRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const { organisationId, id: userId } = ctx.user as {
-        organisationId: string;
-        id: string;
-      };
-
       // Supersede existing assessment of the same type
-      await ctx.prisma.riskAssessment.updateMany({
+      await ctx.db.riskAssessment.updateMany({
         where: {
           serviceUserId: input.serviceUserId,
-          organisationId,
           assessmentType: input.assessmentType,
           status: "ACTIVE",
         },
         data: { status: "SUPERSEDED" },
       });
 
-      return ctx.prisma.riskAssessment.create({
+      return ctx.db.riskAssessment.create({
         data: {
           ...input,
-          organisationId,
-          assessedBy: userId,
+          organisationId: ctx.user.organisationId,
+          assessedBy: ctx.user.id,
           status: "ACTIVE",
-          createdBy: userId,
-          updatedBy: userId,
+          createdBy: ctx.user.id,
+          updatedBy: ctx.user.id,
         },
       });
     }),
@@ -635,11 +580,9 @@ export const clientsRouter = router({
       })
     )
     .query(async ({ ctx, input }) => {
-      const { organisationId } = ctx.user as { organisationId: string };
-      return ctx.prisma.riskAssessment.findMany({
+      return ctx.db.riskAssessment.findMany({
         where: {
           serviceUserId: input.serviceUserId,
-          organisationId,
           assessmentType: input.assessmentType,
         },
         orderBy: { assessmentDate: "desc" },
@@ -660,11 +603,10 @@ export const clientsRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const { id: userId } = ctx.user as { id: string };
       const { id, ...data } = input;
-      return ctx.prisma.riskAssessment.update({
+      return ctx.db.riskAssessment.update({
         where: { id },
-        data: { ...data, updatedBy: userId },
+        data: { ...data, updatedBy: ctx.user.id },
       });
     }),
 
@@ -675,9 +617,8 @@ export const clientsRouter = router({
   listConsentRecords: protectedProcedure
     .input(z.object({ serviceUserId: z.string().min(1) }))
     .query(async ({ ctx, input }) => {
-      const { organisationId } = ctx.user as { organisationId: string };
-      return ctx.prisma.consentRecord.findMany({
-        where: { serviceUserId: input.serviceUserId, organisationId },
+      return ctx.db.consentRecord.findMany({
+        where: { serviceUserId: input.serviceUserId },
         orderBy: { consentDate: "desc" },
       });
     }),
@@ -699,12 +640,8 @@ export const clientsRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const { organisationId, id: userId } = ctx.user as {
-        organisationId: string;
-        id: string;
-      };
-      return ctx.prisma.consentRecord.create({
-        data: { ...input, organisationId, createdBy: userId, updatedBy: userId },
+      return ctx.db.consentRecord.create({
+        data: { ...input, organisationId: ctx.user.organisationId, createdBy: ctx.user.id, updatedBy: ctx.user.id },
       });
     }),
 
@@ -715,9 +652,8 @@ export const clientsRouter = router({
   listServiceAgreements: protectedProcedure
     .input(z.object({ serviceUserId: z.string().min(1) }))
     .query(async ({ ctx, input }) => {
-      const { organisationId } = ctx.user as { organisationId: string };
-      return ctx.prisma.serviceAgreement.findMany({
-        where: { serviceUserId: input.serviceUserId, organisationId },
+      return ctx.db.serviceAgreement.findMany({
+        where: { serviceUserId: input.serviceUserId },
         orderBy: { startDate: "desc" },
       });
     }),
@@ -744,12 +680,8 @@ export const clientsRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const { organisationId, id: userId } = ctx.user as {
-        organisationId: string;
-        id: string;
-      };
-      return ctx.prisma.serviceAgreement.create({
-        data: { ...input, organisationId, createdBy: userId, updatedBy: userId },
+      return ctx.db.serviceAgreement.create({
+        data: { ...input, organisationId: ctx.user.organisationId, createdBy: ctx.user.id, updatedBy: ctx.user.id },
       });
     }),
 
@@ -765,11 +697,9 @@ export const clientsRouter = router({
       })
     )
     .query(async ({ ctx, input }) => {
-      const { organisationId } = ctx.user as { organisationId: string };
-      return ctx.prisma.healthRecord.findMany({
+      return ctx.db.healthRecord.findMany({
         where: {
           serviceUserId: input.serviceUserId,
-          organisationId,
           ...(input.recordType && { recordType: input.recordType as never }),
         },
         orderBy: { recordedDate: "desc" },
@@ -788,19 +718,15 @@ export const clientsRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const { organisationId, id: userId } = ctx.user as {
-        organisationId: string;
-        id: string;
-      };
-      return ctx.prisma.healthRecord.create({
+      return ctx.db.healthRecord.create({
         data: {
           ...input,
           recordType: input.recordType as never,
           severity: input.severity as never,
-          organisationId,
-          recordedBy: userId,
-          createdBy: userId,
-          updatedBy: userId,
+          organisationId: ctx.user.organisationId,
+          recordedBy: ctx.user.id,
+          createdBy: ctx.user.id,
+          updatedBy: ctx.user.id,
         },
       });
     }),
@@ -827,17 +753,13 @@ export const clientsRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const { organisationId, id: userId } = ctx.user as {
-        organisationId: string;
-        id: string;
-      };
       const { id, ...data } = input;
-      await ctx.prisma.serviceAgreement.findUniqueOrThrow({
-        where: { id, organisationId },
-      });
-      return ctx.prisma.serviceAgreement.update({
+      await ctx.db.serviceAgreement.findUniqueOrThrow({
         where: { id },
-        data: { ...data, updatedBy: userId },
+      });
+      return ctx.db.serviceAgreement.update({
+        where: { id },
+        data: { ...data, updatedBy: ctx.user.id },
       });
     }),
 
@@ -852,20 +774,16 @@ export const clientsRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const { organisationId, id: userId } = ctx.user as {
-        organisationId: string;
-        id: string;
-      };
       const { id, ...data } = input;
-      await ctx.prisma.healthRecord.findUniqueOrThrow({
-        where: { id, organisationId },
+      await ctx.db.healthRecord.findUniqueOrThrow({
+        where: { id },
       });
-      return ctx.prisma.healthRecord.update({
+      return ctx.db.healthRecord.update({
         where: { id },
         data: {
           ...data,
           severity: data.severity as never,
-          updatedBy: userId,
+          updatedBy: ctx.user.id,
         },
       });
     }),
@@ -885,17 +803,15 @@ export const clientsRouter = router({
       })
     )
     .query(async ({ ctx, input }) => {
-      const { organisationId } = ctx.user as { organisationId: string };
       const skip = (input.page - 1) * input.limit;
       const where = {
         serviceUserId: input.serviceUserId,
-        organisationId,
         ...(input.from || input.to
           ? { visitDate: { ...(input.from && { gte: input.from }), ...(input.to && { lte: input.to }) } }
           : {}),
       };
       const [items, total] = await Promise.all([
-        ctx.prisma.careVisitRecord.findMany({
+        ctx.db.careVisitRecord.findMany({
           where,
           skip,
           take: input.limit,
@@ -904,7 +820,7 @@ export const clientsRouter = router({
             staffMember: { select: { id: true, firstName: true, lastName: true } },
           },
         }),
-        ctx.prisma.careVisitRecord.count({ where }),
+        ctx.db.careVisitRecord.count({ where }),
       ]);
       return { items, total, page: input.page, limit: input.limit };
     }),
@@ -937,16 +853,11 @@ export const clientsRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const { organisationId, id: userId } = ctx.user as {
-        organisationId: string;
-        id: string;
-      };
-
       // Resolve staff member: use provided or look up from current user
       let staffMemberId = input.staffMemberId;
       if (!staffMemberId) {
-        const user = await ctx.prisma.user.findUnique({
-          where: { id: userId },
+        const user = await ctx.db.user.findUnique({
+          where: { id: ctx.user.id },
           select: { staffMemberId: true },
         });
         if (!user?.staffMemberId) {
@@ -966,11 +877,11 @@ export const clientsRouter = router({
         return dt;
       };
 
-      return ctx.prisma.careVisitRecord.create({
+      return ctx.db.careVisitRecord.create({
         data: {
           serviceUserId: input.serviceUserId,
           staffMemberId,
-          organisationId,
+          organisationId: ctx.user.organisationId,
           visitDate: input.visitDate,
           scheduledStart: makeDateTime(input.visitDate, input.scheduledStart),
           scheduledEnd: makeDateTime(input.visitDate, input.scheduledEnd),
@@ -987,8 +898,8 @@ export const clientsRouter = router({
           familyCommunication: input.familyCommunication,
           conditionChanges: input.conditionChanges,
           notes: input.notes,
-          createdBy: userId,
-          updatedBy: userId,
+          createdBy: ctx.user.id,
+          updatedBy: ctx.user.id,
         },
       });
     }),
@@ -1009,13 +920,7 @@ export const clientsRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const { id: userId, role } = ctx.user as {
-        id: string;
-        organisationId: string;
-        role: string;
-      };
-
-      const visit = await ctx.prisma.careVisitRecord.findUniqueOrThrow({
+      const visit = await ctx.db.careVisitRecord.findUniqueOrThrow({
         where: { id: input.id },
         select: { createdAt: true, organisationId: true },
       });
@@ -1023,7 +928,7 @@ export const clientsRouter = router({
       const hoursSinceCreation =
         (Date.now() - visit.createdAt.getTime()) / (1000 * 60 * 60);
 
-      if (hoursSinceCreation > 48 && !MANAGER_ROLES.includes(role as never)) {
+      if (hoursSinceCreation > 48 && !MANAGER_ROLES.includes(ctx.user.role as never)) {
         throw new TRPCError({
           code: "FORBIDDEN",
           message:
@@ -1035,7 +940,7 @@ export const clientsRouter = router({
         // Audit manager override
         await createAuditLog({
           organisationId: visit.organisationId,
-          userId,
+          userId: ctx.user.id,
           entityType: "care_visit_record",
           entityId: input.id,
           action: "UPDATE",
@@ -1044,9 +949,9 @@ export const clientsRouter = router({
       }
 
       const { id, ...data } = input;
-      return ctx.prisma.careVisitRecord.update({
+      return ctx.db.careVisitRecord.update({
         where: { id },
-        data: { ...data, updatedBy: userId },
+        data: { ...data, updatedBy: ctx.user.id },
       });
     }),
 
@@ -1057,9 +962,8 @@ export const clientsRouter = router({
   listReviews: protectedProcedure
     .input(z.object({ serviceUserId: z.string().min(1) }))
     .query(async ({ ctx, input }) => {
-      const { organisationId } = ctx.user as { organisationId: string };
-      return ctx.prisma.serviceUserReview.findMany({
-        where: { serviceUserId: input.serviceUserId, organisationId },
+      return ctx.db.serviceUserReview.findMany({
+        where: { serviceUserId: input.serviceUserId },
         orderBy: { reviewDate: "desc" },
         include: {
           reviewer: { select: { name: true, email: true } },
@@ -1083,17 +987,13 @@ export const clientsRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const { organisationId, id: userId } = ctx.user as {
-        organisationId: string;
-        id: string;
-      };
-      return ctx.prisma.serviceUserReview.create({
+      return ctx.db.serviceUserReview.create({
         data: {
           ...input,
-          organisationId,
-          reviewerId: userId,
-          createdBy: userId,
-          updatedBy: userId,
+          organisationId: ctx.user.organisationId,
+          reviewerId: ctx.user.id,
+          createdBy: ctx.user.id,
+          updatedBy: ctx.user.id,
         },
       });
     }),
@@ -1114,17 +1014,13 @@ export const clientsRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const { organisationId, id: userId } = ctx.user as {
-        organisationId: string;
-        id: string;
-      };
       const { id, ...data } = input;
-      await ctx.prisma.serviceUserReview.findUniqueOrThrow({
-        where: { id, organisationId },
-      });
-      return ctx.prisma.serviceUserReview.update({
+      await ctx.db.serviceUserReview.findUniqueOrThrow({
         where: { id },
-        data: { ...data, updatedBy: userId },
+      });
+      return ctx.db.serviceUserReview.update({
+        where: { id },
+        data: { ...data, updatedBy: ctx.user.id },
       });
     }),
 
@@ -1140,9 +1036,8 @@ export const clientsRouter = router({
       })
     )
     .query(async ({ ctx, input }) => {
-      const { organisationId } = ctx.user as { organisationId: string };
-      return ctx.prisma.careVisitRecord.findMany({
-        where: { serviceUserId: input.serviceUserId, organisationId },
+      return ctx.db.careVisitRecord.findMany({
+        where: { serviceUserId: input.serviceUserId },
         take: input.limit,
         skip: (input.page - 1) * input.limit,
         orderBy: { visitDate: "desc" },
@@ -1162,10 +1057,8 @@ export const clientsRouter = router({
       })
     )
     .query(async ({ ctx, input }) => {
-      const { organisationId } = ctx.user as { organisationId: string };
-      const existing = await ctx.prisma.serviceUser.findFirst({
+      const existing = await ctx.db.serviceUser.findFirst({
         where: {
-          organisationId,
           chiNumber: input.chiNumber,
           ...(input.excludeId && { NOT: { id: input.excludeId } }),
         },
@@ -1185,11 +1078,10 @@ export const clientsRouter = router({
   deleteHealthRecord: protectedProcedure
     .input(z.object({ id: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {
-      const { organisationId } = ctx.user as { organisationId: string };
-      await ctx.prisma.healthRecord.findUniqueOrThrow({
-        where: { id: input.id, organisationId },
+      await ctx.db.healthRecord.findUniqueOrThrow({
+        where: { id: input.id },
       });
-      return ctx.prisma.healthRecord.delete({ where: { id: input.id } });
+      return ctx.db.healthRecord.delete({ where: { id: input.id } });
     }),
 
   // ─────────────────────────────────────────
@@ -1211,28 +1103,23 @@ export const clientsRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const { organisationId, id: userId } = ctx.user as {
-        organisationId: string;
-        id: string;
-      };
       const { id, ...data } = input;
-      await ctx.prisma.consentRecord.findUniqueOrThrow({
-        where: { id, organisationId },
-      });
-      return ctx.prisma.consentRecord.update({
+      await ctx.db.consentRecord.findUniqueOrThrow({
         where: { id },
-        data: { ...data, updatedBy: userId },
+      });
+      return ctx.db.consentRecord.update({
+        where: { id },
+        data: { ...data, updatedBy: ctx.user.id },
       });
     }),
 
   deleteConsentRecord: protectedProcedure
     .input(z.object({ id: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {
-      const { organisationId } = ctx.user as { organisationId: string };
-      await ctx.prisma.consentRecord.findUniqueOrThrow({
-        where: { id: input.id, organisationId },
+      await ctx.db.consentRecord.findUniqueOrThrow({
+        where: { id: input.id },
       });
-      return ctx.prisma.consentRecord.delete({ where: { id: input.id } });
+      return ctx.db.consentRecord.delete({ where: { id: input.id } });
     }),
 
   // ─────────────────────────────────────────
@@ -1242,9 +1129,8 @@ export const clientsRouter = router({
   listAssignedStaff: protectedProcedure
     .input(z.object({ serviceUserId: z.string().min(1) }))
     .query(async ({ ctx, input }) => {
-      const { organisationId } = ctx.user as { organisationId: string };
-      return ctx.prisma.serviceUserStaff.findMany({
-        where: { serviceUserId: input.serviceUserId, organisationId },
+      return ctx.db.serviceUserStaff.findMany({
+        where: { serviceUserId: input.serviceUserId },
         orderBy: { createdAt: "asc" },
         include: {
           staffMember: {
@@ -1270,14 +1156,10 @@ export const clientsRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const { organisationId, id: userId } = ctx.user as {
-        organisationId: string;
-        id: string;
-      };
-      await ctx.prisma.staffMember.findUniqueOrThrow({
-        where: { id: input.staffMemberId, organisationId },
+      await ctx.db.staffMember.findUniqueOrThrow({
+        where: { id: input.staffMemberId },
       });
-      return ctx.prisma.serviceUserStaff.upsert({
+      return ctx.db.serviceUserStaff.upsert({
         where: {
           serviceUserId_staffMemberId: {
             serviceUserId: input.serviceUserId,
@@ -1288,9 +1170,9 @@ export const clientsRouter = router({
         create: {
           serviceUserId: input.serviceUserId,
           staffMemberId: input.staffMemberId,
-          organisationId,
+          organisationId: ctx.user.organisationId,
           role: input.role as StaffAssignmentRole,
-          createdBy: userId,
+          createdBy: ctx.user.id,
         },
       });
     }),
@@ -1298,11 +1180,10 @@ export const clientsRouter = router({
   removeStaffAssignment: protectedProcedure
     .input(z.object({ id: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {
-      const { organisationId } = ctx.user as { organisationId: string };
-      await ctx.prisma.serviceUserStaff.findUniqueOrThrow({
-        where: { id: input.id, organisationId },
+      await ctx.db.serviceUserStaff.findUniqueOrThrow({
+        where: { id: input.id },
       });
-      return ctx.prisma.serviceUserStaff.delete({ where: { id: input.id } });
+      return ctx.db.serviceUserStaff.delete({ where: { id: input.id } });
     }),
 
   // ─────────────────────────────────────────
@@ -1312,10 +1193,8 @@ export const clientsRouter = router({
   listSharedHCPs: protectedProcedure
     .input(z.object({ search: z.string().optional() }))
     .query(async ({ ctx, input }) => {
-      const { organisationId } = ctx.user as { organisationId: string };
-      return ctx.prisma.sharedHealthcareProfessional.findMany({
+      return ctx.db.sharedHealthcareProfessional.findMany({
         where: {
-          organisationId,
           ...(input.search && {
             OR: [
               { professionalName: { contains: input.search, mode: "insensitive" as const } },
@@ -1339,12 +1218,8 @@ export const clientsRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const { organisationId, id: userId } = ctx.user as {
-        organisationId: string;
-        id: string;
-      };
-      return ctx.prisma.sharedHealthcareProfessional.create({
-        data: { ...input, email: input.email || undefined, organisationId, createdBy: userId },
+      return ctx.db.sharedHealthcareProfessional.create({
+        data: { ...input, email: input.email || undefined, organisationId: ctx.user.organisationId, createdBy: ctx.user.id },
       });
     }),
 
@@ -1360,12 +1235,11 @@ export const clientsRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const { organisationId } = ctx.user as { organisationId: string };
       const { id, email, ...rest } = input;
-      await ctx.prisma.sharedHealthcareProfessional.findUniqueOrThrow({
-        where: { id, organisationId },
+      await ctx.db.sharedHealthcareProfessional.findUniqueOrThrow({
+        where: { id },
       });
-      return ctx.prisma.sharedHealthcareProfessional.update({
+      return ctx.db.sharedHealthcareProfessional.update({
         where: { id },
         data: { ...rest, email: email || undefined },
       });
@@ -1374,9 +1248,8 @@ export const clientsRouter = router({
   listHealthcareProfessionals: protectedProcedure
     .input(z.object({ serviceUserId: z.string().min(1) }))
     .query(async ({ ctx, input }) => {
-      const { organisationId } = ctx.user as { organisationId: string };
-      return ctx.prisma.serviceUserHealthcareProfessional.findMany({
-        where: { serviceUserId: input.serviceUserId, organisationId },
+      return ctx.db.serviceUserHealthcareProfessional.findMany({
+        where: { serviceUserId: input.serviceUserId },
         orderBy: { createdAt: "asc" },
         include: { sharedHcp: true },
       });
@@ -1396,11 +1269,6 @@ export const clientsRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const { organisationId, id: userId } = ctx.user as {
-        organisationId: string;
-        id: string;
-      };
-
       let fields: {
         professionalName: string;
         role?: string;
@@ -1410,8 +1278,8 @@ export const clientsRouter = router({
       };
 
       if (input.sharedHcpId) {
-        const shared = await ctx.prisma.sharedHealthcareProfessional.findUniqueOrThrow({
-          where: { id: input.sharedHcpId, organisationId },
+        const shared = await ctx.db.sharedHealthcareProfessional.findUniqueOrThrow({
+          where: { id: input.sharedHcpId },
         });
         fields = {
           professionalName: shared.professionalName,
@@ -1433,14 +1301,14 @@ export const clientsRouter = router({
         };
       }
 
-      return ctx.prisma.serviceUserHealthcareProfessional.create({
+      return ctx.db.serviceUserHealthcareProfessional.create({
         data: {
           serviceUserId: input.serviceUserId,
-          organisationId,
+          organisationId: ctx.user.organisationId,
           sharedHcpId: input.sharedHcpId ?? null,
           notes: input.notes,
-          createdBy: userId,
-          updatedBy: userId,
+          createdBy: ctx.user.id,
+          updatedBy: ctx.user.id,
           ...fields,
         },
       });
@@ -1459,7 +1327,6 @@ export const clientsRouter = router({
       })
     )
     .query(async ({ ctx, input }) => {
-      const { organisationId } = ctx.user as { organisationId: string };
       const { serviceUserId } = input;
 
       const [
@@ -1471,39 +1338,39 @@ export const clientsRouter = router({
         healthRecords,
         incidents,
       ] = await Promise.all([
-        ctx.prisma.careVisitRecord.findMany({
-          where: { serviceUserId, organisationId },
+        ctx.db.careVisitRecord.findMany({
+          where: { serviceUserId },
           take: 100,
           orderBy: { visitDate: "desc" },
           include: { staffMember: { select: { firstName: true, lastName: true } } },
         }),
-        ctx.prisma.personalPlan.findMany({
-          where: { serviceUserId, organisationId },
+        ctx.db.personalPlan.findMany({
+          where: { serviceUserId },
           take: 100,
           orderBy: { createdAt: "desc" },
         }),
-        ctx.prisma.riskAssessment.findMany({
-          where: { serviceUserId, organisationId },
+        ctx.db.riskAssessment.findMany({
+          where: { serviceUserId },
           take: 100,
           orderBy: { assessmentDate: "desc" },
         }),
-        ctx.prisma.consentRecord.findMany({
-          where: { serviceUserId, organisationId },
+        ctx.db.consentRecord.findMany({
+          where: { serviceUserId },
           take: 100,
           orderBy: { consentDate: "desc" },
         }),
-        ctx.prisma.serviceUserReview.findMany({
-          where: { serviceUserId, organisationId },
+        ctx.db.serviceUserReview.findMany({
+          where: { serviceUserId },
           take: 100,
           orderBy: { reviewDate: "desc" },
         }),
-        ctx.prisma.healthRecord.findMany({
-          where: { serviceUserId, organisationId },
+        ctx.db.healthRecord.findMany({
+          where: { serviceUserId },
           take: 100,
           orderBy: { recordedDate: "desc" },
         }),
-        ctx.prisma.incident.findMany({
-          where: { serviceUserId, organisationId },
+        ctx.db.incident.findMany({
+          where: { serviceUserId },
           take: 100,
           orderBy: { incidentDate: "desc" },
         }),
@@ -1586,8 +1453,6 @@ export const clientsRouter = router({
   // ─────────────────────────────────────────
 
   getPendingActions: protectedProcedure.query(async ({ ctx }) => {
-    const { organisationId } = ctx.user as { organisationId: string };
-
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const thirtyDaysLater = new Date(today);
@@ -1616,8 +1481,8 @@ export const clientsRouter = router({
 
     const [plansRaw, reviewsRaw, riskRaw, agreementsRaw, activeClients] =
       await Promise.all([
-        ctx.prisma.personalPlan.findMany({
-          where: { organisationId, status: "DRAFT", serviceUser: { status: "ACTIVE" } },
+        ctx.db.personalPlan.findMany({
+          where: { status: "DRAFT", serviceUser: { status: "ACTIVE" } },
           select: {
             id: true,
             planVersion: true,
@@ -1627,9 +1492,8 @@ export const clientsRouter = router({
           },
           orderBy: { createdAt: "asc" },
         }),
-        ctx.prisma.serviceUserReview.findMany({
+        ctx.db.serviceUserReview.findMany({
           where: {
-            organisationId,
             nextReviewDate: { lt: today },
             serviceUser: { status: "ACTIVE" },
           },
@@ -1643,9 +1507,8 @@ export const clientsRouter = router({
           },
           orderBy: { reviewDate: "desc" },
         }),
-        ctx.prisma.riskAssessment.findMany({
+        ctx.db.riskAssessment.findMany({
           where: {
-            organisationId,
             status: "ACTIVE",
             nextReviewDate: { lt: today },
             serviceUser: { status: "ACTIVE" },
@@ -1659,9 +1522,8 @@ export const clientsRouter = router({
           },
           orderBy: { nextReviewDate: "asc" },
         }),
-        ctx.prisma.serviceAgreement.findMany({
+        ctx.db.serviceAgreement.findMany({
           where: {
-            organisationId,
             endDate: { gte: today, lte: thirtyDaysLater },
             serviceUser: { status: "ACTIVE" },
           },
@@ -1673,8 +1535,8 @@ export const clientsRouter = router({
           },
           orderBy: { endDate: "asc" },
         }),
-        ctx.prisma.serviceUser.findMany({
-          where: { organisationId, status: "ACTIVE" },
+        ctx.db.serviceUser.findMany({
+          where: { status: "ACTIVE" },
           select: {
             id: true,
             firstName: true,
