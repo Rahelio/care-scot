@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { router, protectedProcedure } from "../trpc";
 import { TRPCError } from "@trpc/server";
+import { addressSchema, optionalEmailSchema, paginationSchema } from "../shared/validators";
 import { requirePermission } from "../middleware/rbac";
 import { OrgScopedPrismaClient } from "../middleware/org-scope";
 import {
@@ -63,12 +64,9 @@ const fundersRouter = router({
         name: z.string().min(1),
         funderType: z.nativeEnum(FunderType),
         contactName: z.string().optional(),
-        contactEmail: z.string().email().optional().or(z.literal("")),
+        contactEmail: optionalEmailSchema,
         contactPhone: z.string().optional(),
-        addressLine1: z.string().optional(),
-        addressLine2: z.string().optional(),
-        city: z.string().optional(),
-        postcode: z.string().optional(),
+        ...addressSchema.shape,
         paymentTermsDays: z.number().int().min(0).default(30),
         invoiceFrequency: z.nativeEnum(InvoiceFrequency).default("MONTHLY"),
         billingTimeBasis: z.nativeEnum(BillingTimeBasis).default("SCHEDULED"),
@@ -96,12 +94,9 @@ const fundersRouter = router({
         name: z.string().min(1).optional(),
         funderType: z.nativeEnum(FunderType).optional(),
         contactName: z.string().optional(),
-        contactEmail: z.string().email().optional().or(z.literal("")),
+        contactEmail: optionalEmailSchema,
         contactPhone: z.string().optional(),
-        addressLine1: z.string().optional(),
-        addressLine2: z.string().optional(),
-        city: z.string().optional(),
-        postcode: z.string().optional(),
+        ...addressSchema.shape,
         paymentTermsDays: z.number().int().min(0).optional(),
         invoiceFrequency: z.nativeEnum(InvoiceFrequency).optional(),
         billingTimeBasis: z.nativeEnum(BillingTimeBasis).optional(),
@@ -1280,8 +1275,7 @@ const invoicesRouter = router({
       z.object({
         funderId: z.string().optional(),
         status: z.nativeEnum(InvoiceStatus).optional(),
-        page: z.number().min(1).default(1),
-        limit: z.number().min(1).max(100).default(20),
+        ...paginationSchema.shape,
       }),
     )
     .query(async ({ ctx, input }) => {

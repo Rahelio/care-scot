@@ -11,6 +11,7 @@ import {
 } from "@prisma/client";
 import { TRPCError } from "@trpc/server";
 import { requirePermission } from "../middleware/rbac";
+import { paginationSchema } from "../shared/validators";
 
 const manageProcedure = protectedProcedure.use(
   requirePermission("audits.manage")
@@ -287,8 +288,7 @@ export const complianceRouter = router({
       .input(
         z.object({
           status: z.nativeEnum(ComplaintStatus).optional(),
-          page: z.number().min(1).default(1),
-          limit: z.number().min(1).max(100).default(20),
+          ...paginationSchema.shape,
         })
       )
       .query(async ({ ctx, input }) => {
@@ -425,12 +425,7 @@ export const complianceRouter = router({
 
   compliments: router({
     list: protectedProcedure
-      .input(
-        z.object({
-          page: z.number().min(1).default(1),
-          limit: z.number().min(1).max(100).default(20),
-        })
-      )
+      .input(paginationSchema)
       .query(async ({ ctx, input }) => {
         const skip = (input.page - 1) * input.limit;
         const [items, total] = await Promise.all([
@@ -483,8 +478,7 @@ export const complianceRouter = router({
         z.object({
           auditType: z.nativeEnum(QualityAuditType).optional(),
           status: z.nativeEnum(AuditStatus).optional(),
-          page: z.number().min(1).default(1),
-          limit: z.number().min(1).max(100).default(20),
+          ...paginationSchema.shape,
         })
       )
       .query(async ({ ctx, input }) => {
@@ -589,8 +583,7 @@ export const complianceRouter = router({
       .input(
         z.object({
           surveyType: z.nativeEnum(SurveyType).optional(),
-          page: z.number().min(1).default(1),
-          limit: z.number().min(1).max(100).default(20),
+          ...paginationSchema.shape,
         })
       )
       .query(async ({ ctx, input }) => {

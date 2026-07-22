@@ -10,6 +10,7 @@ import {
   computeTrainingStatus,
   ALL_MANDATORY_TYPES,
 } from "../services/staff/training-config";
+import { addressSchema, paginationSchema } from "../shared/validators";
 
 const staffReadProcedure = protectedProcedure.use(requirePermission("staff.read"));
 const staffManageProcedure = protectedProcedure.use(requirePermission("staff.manage"));
@@ -23,8 +24,7 @@ export const staffRouter = router({
         status: z.nativeEnum(StaffStatus).optional(),
         roleType: z.nativeEnum(StaffRoleType).optional(),
         search: z.string().optional(),
-        page: z.number().min(1).default(1),
-        limit: z.number().min(1).max(100).default(20),
+        ...paginationSchema.shape,
       })
     )
     .query(async ({ ctx, input }) => {
@@ -163,10 +163,7 @@ export const staffRouter = router({
         employmentType: z.nativeEnum(EmploymentType),
         startDate: z.date(),
         contractHoursPerWeek: z.number().optional(),
-        addressLine1: z.string().optional(),
-        addressLine2: z.string().optional(),
-        city: z.string().optional(),
-        postcode: z.string().optional(),
+        ...addressSchema.shape,
         rightToWorkChecked: z.boolean().optional(),
         rightToWorkDocument: z.string().optional(),
         probationEndDate: z.date().optional(),
@@ -191,10 +188,7 @@ export const staffRouter = router({
         roleType: z.nativeEnum(StaffRoleType).optional(),
         employmentType: z.nativeEnum(EmploymentType).optional(),
         contractHoursPerWeek: z.number().optional(),
-        addressLine1: z.string().optional(),
-        addressLine2: z.string().optional(),
-        city: z.string().optional(),
-        postcode: z.string().optional(),
+        ...addressSchema.shape,
         rightToWorkChecked: z.boolean().optional(),
         rightToWorkDocument: z.string().optional(),
         probationEndDate: z.date().optional(),

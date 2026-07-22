@@ -3,6 +3,7 @@ import { router, protectedProcedure } from "../trpc";
 import { ServiceUserStatus, RiskAssessmentType, RiskLevel, ConsentType, StaffAssignmentRole } from "@prisma/client";
 import { TRPCError } from "@trpc/server";
 import { createAuditLog } from "../middleware/audit";
+import { addressSchema, optionalEmailSchema, paginationSchema } from "../shared/validators";
 
 const MANAGER_ROLES = ["MANAGER", "ORG_ADMIN", "SUPER_ADMIN"] as const;
 
@@ -16,8 +17,7 @@ export const clientsRouter = router({
       z.object({
         status: z.nativeEnum(ServiceUserStatus).optional(),
         search: z.string().optional(),
-        page: z.number().min(1).default(1),
-        limit: z.number().min(1).max(100).default(20),
+        ...paginationSchema.shape,
       })
     )
     .query(async ({ ctx, input }) => {
@@ -129,13 +129,10 @@ export const clientsRouter = router({
         lastName: z.string().min(1),
         dateOfBirth: z.coerce.date(),
         chiNumber: z.string().optional(),
-        addressLine1: z.string().optional(),
-        addressLine2: z.string().optional(),
-        city: z.string().optional(),
-        postcode: z.string().optional(),
+        ...addressSchema.shape,
         phonePrimary: z.string().optional(),
         phoneSecondary: z.string().optional(),
-        email: z.string().email().optional().or(z.literal("")),
+        email: optionalEmailSchema,
         gpName: z.string().optional(),
         gpPractice: z.string().optional(),
         gpPhone: z.string().optional(),
@@ -187,13 +184,10 @@ export const clientsRouter = router({
         lastName: z.string().min(1).optional(),
         dateOfBirth: z.coerce.date().optional(),
         chiNumber: z.string().optional(),
-        addressLine1: z.string().optional(),
-        addressLine2: z.string().optional(),
-        city: z.string().optional(),
-        postcode: z.string().optional(),
+        ...addressSchema.shape,
         phonePrimary: z.string().optional(),
         phoneSecondary: z.string().optional(),
-        email: z.string().email().optional().or(z.literal("")),
+        email: optionalEmailSchema,
         gpName: z.string().optional(),
         gpPractice: z.string().optional(),
         gpPhone: z.string().optional(),
@@ -242,7 +236,7 @@ export const clientsRouter = router({
         contactName: z.string().min(1),
         relationship: z.string().optional(),
         phone: z.string().optional(),
-        email: z.string().email().optional().or(z.literal("")),
+        email: optionalEmailSchema,
         isNextOfKin: z.boolean().default(false),
         isEmergencyContact: z.boolean().default(false),
         hasPowerOfAttorney: z.boolean().default(false),
@@ -271,7 +265,7 @@ export const clientsRouter = router({
         contactName: z.string().min(1).optional(),
         relationship: z.string().optional(),
         phone: z.string().optional(),
-        email: z.string().email().optional().or(z.literal("")),
+        email: optionalEmailSchema,
         isNextOfKin: z.boolean().optional(),
         isEmergencyContact: z.boolean().optional(),
         hasPowerOfAttorney: z.boolean().optional(),
@@ -306,7 +300,7 @@ export const clientsRouter = router({
         role: z.string().optional(),
         organisation: z.string().optional(),
         phone: z.string().optional(),
-        email: z.string().email().optional().or(z.literal("")),
+        email: optionalEmailSchema,
         notes: z.string().optional(),
       })
     )
@@ -1214,7 +1208,7 @@ export const clientsRouter = router({
         role: z.string().optional(),
         organisation: z.string().optional(),
         phone: z.string().optional(),
-        email: z.string().email().optional().or(z.literal("")),
+        email: optionalEmailSchema,
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -1231,7 +1225,7 @@ export const clientsRouter = router({
         role: z.string().optional(),
         organisation: z.string().optional(),
         phone: z.string().optional(),
-        email: z.string().email().optional().or(z.literal("")),
+        email: optionalEmailSchema,
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -1264,7 +1258,7 @@ export const clientsRouter = router({
         role: z.string().optional(),
         organisation: z.string().optional(),
         phone: z.string().optional(),
-        email: z.string().email().optional().or(z.literal("")),
+        email: optionalEmailSchema,
         notes: z.string().optional(),
       })
     )

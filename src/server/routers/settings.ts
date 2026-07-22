@@ -4,6 +4,7 @@ import { TRPCError } from "@trpc/server";
 import { Prisma, UserRole } from "@prisma/client";
 import { router, protectedProcedure } from "../trpc";
 import { requirePermission } from "../middleware/rbac";
+import { paginationSchema } from "../shared/validators";
 
 const settingsProcedure = protectedProcedure.use(
   requirePermission("settings.manage"),
@@ -75,8 +76,7 @@ const usersRouter = router({
   list: usersMgmtProcedure
     .input(
       z.object({
-        page: z.number().min(1).default(1),
-        limit: z.number().min(1).max(100).default(20),
+        ...paginationSchema.shape,
         search: z.string().optional(),
       }),
     )

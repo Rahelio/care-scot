@@ -12,6 +12,9 @@ export const dateRangeSchema = z.object({
 
 export const uuidSchema = z.string().min(1);
 
+/** Optional email that also accepts an empty string (form fields cleared by the user). */
+export const optionalEmailSchema = z.string().email().optional().or(z.literal(""));
+
 export const addressSchema = z.object({
   addressLine1: z.string().optional(),
   addressLine2: z.string().optional(),

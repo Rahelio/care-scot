@@ -12,6 +12,7 @@ import {
 import { TRPCError } from "@trpc/server";
 import { requirePermission } from "../middleware/rbac";
 import { notifyManagers } from "../services/shared/notification-generator";
+import { dateRangeSchema, paginationSchema } from "../shared/validators";
 
 const incManageProcedure = protectedProcedure.use(
   requirePermission("incidents.manage")
@@ -59,10 +60,8 @@ export const incidentsRouter = router({
         status: z.nativeEnum(IncidentStatus).optional(),
         severity: z.nativeEnum(IncidentSeverity).optional(),
         serviceUserId: z.string().min(1).optional(),
-        from: z.date().optional(),
-        to: z.date().optional(),
-        page: z.number().min(1).default(1),
-        limit: z.number().min(1).max(100).default(20),
+        ...dateRangeSchema.shape,
+        ...paginationSchema.shape,
       })
     )
     .query(async ({ ctx, input }) => {
@@ -254,8 +253,7 @@ export const incidentsRouter = router({
         z.object({
           serviceUserId: z.string().min(1).optional(),
           status: z.nativeEnum(SafeguardingStatus).optional(),
-          page: z.number().min(1).default(1),
-          limit: z.number().min(1).max(100).default(20),
+          ...paginationSchema.shape,
         })
       )
       .query(async ({ ctx, input }) => {
@@ -375,12 +373,7 @@ export const incidentsRouter = router({
 
   ciNotifications: router({
     list: incManageProcedure
-      .input(
-        z.object({
-          page: z.number().min(1).default(1),
-          limit: z.number().min(1).max(100).default(20),
-        })
-      )
+      .input(paginationSchema)
       .query(async ({ ctx, input }) => {
         const skip = (input.page - 1) * input.limit;
 
@@ -563,8 +556,7 @@ export const incidentsRouter = router({
     .input(
       z.object({
         serviceUserId: z.string().min(1).optional(),
-        page: z.number().min(1).default(1),
-        limit: z.number().min(1).max(100).default(20),
+        ...paginationSchema.shape,
       })
     )
     .query(async ({ ctx, input }) => {
