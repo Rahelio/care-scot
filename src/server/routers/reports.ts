@@ -45,14 +45,8 @@ export const reportsRouter = router({
       }),
     )
     .query(async ({ ctx, input }) => {
-      const { organisationId, id: userId } = ctx.user as {
-        organisationId: string;
-        id: string;
-      };
-
-      const items = await ctx.prisma.serviceUser.findMany({
+      const items = await ctx.db.serviceUser.findMany({
         where: {
-          organisationId,
           ...(input.status ? { status: input.status } : {}),
         },
         orderBy: { lastName: "asc" },
@@ -99,9 +93,11 @@ export const reportsRouter = router({
         su.dischargeReason ?? "",
       ]);
 
+      // Not covered by automatic audit logging (that only fires on
+      // create/update/delete) — this records a deliberate EXPORT event.
       await createAuditLog({
-        organisationId,
-        userId,
+        organisationId: ctx.user.organisationId,
+        userId: ctx.user.id,
         entityType: "ServiceUser",
         entityId: crypto.randomUUID(),
         action: AuditAction.EXPORT,
@@ -116,14 +112,9 @@ export const reportsRouter = router({
 
   // ── Training Matrix ────────────────────────────────────────────────────────
   exportTrainingMatrix: reportProcedure.query(async ({ ctx }) => {
-    const { organisationId, id: userId } = ctx.user as {
-      organisationId: string;
-      id: string;
-    };
-
     const trainingTypes = Object.values(TrainingType);
-    const staff = await ctx.prisma.staffMember.findMany({
-      where: { organisationId, status: "ACTIVE" },
+    const staff = await ctx.db.staffMember.findMany({
+      where: { status: "ACTIVE" },
       orderBy: { lastName: "asc" },
       select: {
         firstName: true,
@@ -161,8 +152,8 @@ export const reportsRouter = router({
     });
 
     await createAuditLog({
-      organisationId,
-      userId,
+      organisationId: ctx.user.organisationId,
+      userId: ctx.user.id,
       entityType: "StaffTrainingRecord",
       entityId: crypto.randomUUID(),
       action: AuditAction.EXPORT,
@@ -185,14 +176,8 @@ export const reportsRouter = router({
       }),
     )
     .query(async ({ ctx, input }) => {
-      const { organisationId, id: userId } = ctx.user as {
-        organisationId: string;
-        id: string;
-      };
-
-      const items = await ctx.prisma.incident.findMany({
+      const items = await ctx.db.incident.findMany({
         where: {
-          organisationId,
           ...(input.status ? { status: input.status } : {}),
           ...(input.from || input.to
             ? {
@@ -245,8 +230,8 @@ export const reportsRouter = router({
       ]);
 
       await createAuditLog({
-        organisationId,
-        userId,
+        organisationId: ctx.user.organisationId,
+        userId: ctx.user.id,
         entityType: "Incident",
         entityId: crypto.randomUUID(),
         action: AuditAction.EXPORT,
@@ -267,14 +252,8 @@ export const reportsRouter = router({
       }),
     )
     .query(async ({ ctx, input }) => {
-      const { organisationId, id: userId } = ctx.user as {
-        organisationId: string;
-        id: string;
-      };
-
-      const items = await ctx.prisma.complaint.findMany({
+      const items = await ctx.db.complaint.findMany({
         where: {
-          organisationId,
           ...(input.status ? { status: input.status } : {}),
         },
         orderBy: { dateReceived: "desc" },
@@ -320,8 +299,8 @@ export const reportsRouter = router({
       });
 
       await createAuditLog({
-        organisationId,
-        userId,
+        organisationId: ctx.user.organisationId,
+        userId: ctx.user.id,
         entityType: "Complaint",
         entityId: crypto.randomUUID(),
         action: AuditAction.EXPORT,
@@ -345,14 +324,8 @@ export const reportsRouter = router({
       }),
     )
     .query(async ({ ctx, input }) => {
-      const { organisationId, id: userId } = ctx.user as {
-        organisationId: string;
-        id: string;
-      };
-
-      const items = await ctx.prisma.auditLog.findMany({
+      const items = await ctx.db.auditLog.findMany({
         where: {
-          organisationId,
           ...(input.action ? { action: input.action } : {}),
           ...(input.entityType ? { entityType: input.entityType } : {}),
           ...(input.dateFrom || input.dateTo
@@ -394,8 +367,8 @@ export const reportsRouter = router({
       ]);
 
       await createAuditLog({
-        organisationId,
-        userId,
+        organisationId: ctx.user.organisationId,
+        userId: ctx.user.id,
         entityType: "AuditLog",
         entityId: crypto.randomUUID(),
         action: AuditAction.EXPORT,
