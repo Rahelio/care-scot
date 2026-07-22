@@ -45,11 +45,9 @@ export const medicationRouter = router({
       })
     )
     .query(async ({ ctx, input }) => {
-      const { organisationId } = ctx.user as { organisationId: string };
-      return ctx.prisma.serviceUserMedication.findMany({
+      return ctx.db.serviceUserMedication.findMany({
         where: {
           serviceUserId: input.serviceUserId,
-          organisationId,
           ...(input.status && { status: input.status }),
         },
         orderBy: [{ isPrn: "asc" }, { medicationName: "asc" }],
@@ -77,20 +75,16 @@ export const medicationRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const { organisationId, id: userId } = ctx.user as {
-        organisationId: string;
-        id: string;
-      };
       const { startDate, endDate, ...rest } = input;
-      return ctx.prisma.serviceUserMedication.create({
+      return ctx.db.serviceUserMedication.create({
         data: {
           ...rest,
           form: rest.form as never,
           startDate: new Date(startDate),
           endDate: endDate ? new Date(endDate) : undefined,
-          organisationId,
-          createdBy: userId,
-          updatedBy: userId,
+          organisationId: ctx.user.organisationId,
+          createdBy: ctx.user.id,
+          updatedBy: ctx.user.id,
         },
       });
     }),
@@ -115,18 +109,14 @@ export const medicationRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const { organisationId, id: userId } = ctx.user as {
-        organisationId: string;
-        id: string;
-      };
       const { id, endDate, ...data } = input;
-      return ctx.prisma.serviceUserMedication.update({
-        where: { id, organisationId },
+      return ctx.db.serviceUserMedication.update({
+        where: { id },
         data: {
           ...data,
           form: data.form as never,
           endDate: endDate ? new Date(endDate) : undefined,
-          updatedBy: userId,
+          updatedBy: ctx.user.id,
         },
       });
     }),
@@ -140,17 +130,13 @@ export const medicationRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const { organisationId, id: userId } = ctx.user as {
-        organisationId: string;
-        id: string;
-      };
-      return ctx.prisma.serviceUserMedication.update({
-        where: { id: input.id, organisationId },
+      return ctx.db.serviceUserMedication.update({
+        where: { id: input.id },
         data: {
           status: "DISCONTINUED",
           discontinuedReason: input.discontinuedReason,
           endDate: input.endDate ? new Date(input.endDate) : new Date(),
-          updatedBy: userId,
+          updatedBy: ctx.user.id,
         },
       });
     }),
@@ -166,23 +152,20 @@ export const medicationRouter = router({
       })
     )
     .query(async ({ ctx, input }) => {
-      const { organisationId } = ctx.user as { organisationId: string };
       const startDate = new Date(input.year, input.month - 1, 1);
       const endDate = new Date(input.year, input.month, 0);
 
       const [medications, records] = await Promise.all([
-        ctx.prisma.serviceUserMedication.findMany({
+        ctx.db.serviceUserMedication.findMany({
           where: {
             serviceUserId: input.serviceUserId,
-            organisationId,
             status: { not: "DISCONTINUED" },
           },
           orderBy: [{ isPrn: "asc" }, { medicationName: "asc" }],
         }),
-        ctx.prisma.medicationAdminRecord.findMany({
+        ctx.db.medicationAdminRecord.findMany({
           where: {
             serviceUserId: input.serviceUserId,
-            organisationId,
             scheduledDate: { gte: startDate, lte: endDate },
           },
           include: {
@@ -219,23 +202,17 @@ export const medicationRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const { organisationId, id: userId, staffMemberId } = ctx.user as {
-        organisationId: string;
-        id: string;
-        staffMemberId: string | null;
-      };
-
-      if (!staffMemberId) {
+      if (!ctx.user.staffMemberId) {
         throw new TRPCError({
           code: "FORBIDDEN",
           message: "No staff member profile linked to your account",
         });
       }
 
-      const medication = await ctx.prisma.serviceUserMedication.findUnique({
+      const medication = await ctx.db.serviceUserMedication.findUnique({
         where: { id: input.medicationId },
       });
-      if (!medication || medication.organisationId !== organisationId) {
+      if (!medication || medication.organisationId !== ctx.user.organisationId) {
         throw new TRPCError({ code: "NOT_FOUND" });
       }
 
@@ -253,15 +230,15 @@ export const medicationRouter = router({
         });
       }
 
-      return ctx.prisma.medicationAdminRecord.create({
+      return ctx.db.medicationAdminRecord.create({
         data: {
           serviceUserId: input.serviceUserId,
           medicationId: input.medicationId,
-          organisationId,
+          organisationId: ctx.user.organisationId,
           scheduledDate: new Date(input.scheduledDate),
           scheduledTime: input.scheduledTime,
           administered: input.administered,
-          administeredBy: input.administered ? staffMemberId : undefined,
+          administeredBy: input.administered ? ctx.user.staffMemberId : undefined,
           administeredAt: input.administered ? new Date() : undefined,
           doseGiven: input.doseGiven,
           refused: input.refused,
@@ -271,16 +248,15 @@ export const medicationRouter = router({
           prnReasonGiven: input.prnReasonGiven,
           outcomeNotes: input.outcomeNotes,
           witnessId: input.witnessId,
-          createdBy: userId,
-          updatedBy: userId,
+          createdBy: ctx.user.id,
+          updatedBy: ctx.user.id,
         },
       });
     }),
 
   listStaffForWitness: medAdminProcedure.query(async ({ ctx }) => {
-    const { organisationId } = ctx.user as { organisationId: string };
-    return ctx.prisma.staffMember.findMany({
-      where: { organisationId, status: "ACTIVE" },
+    return ctx.db.staffMember.findMany({
+      where: { status: "ACTIVE" },
       select: { id: true, firstName: true, lastName: true },
       orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
     });
@@ -296,13 +272,11 @@ export const medicationRouter = router({
       })
     )
     .query(async ({ ctx, input }) => {
-      const { organisationId } = ctx.user as { organisationId: string };
       const dateOnly = input.date.toISOString().split("T")[0];
 
-      return ctx.prisma.medicationAdminRecord.findMany({
+      return ctx.db.medicationAdminRecord.findMany({
         where: {
           serviceUserId: input.serviceUserId,
-          organisationId,
           scheduledDate: new Date(dateOnly),
         },
         include: {
@@ -336,23 +310,17 @@ export const medicationRouter = router({
         })
       )
       .mutation(async ({ ctx, input }) => {
-        const { organisationId, id: userId, staffMemberId } = ctx.user as {
-          organisationId: string;
-          id: string;
-          staffMemberId: string | null;
-        };
-
         const { errorDate, ...rest } = input;
 
-        const error = await ctx.prisma.medicationError.create({
+        const error = await ctx.db.medicationError.create({
           data: {
             ...rest,
             errorDate: new Date(errorDate),
-            organisationId,
-            reportedBy: staffMemberId ?? undefined,
+            organisationId: ctx.user.organisationId,
+            reportedBy: ctx.user.staffMemberId ?? undefined,
             reportedDate: new Date(),
-            createdBy: userId,
-            updatedBy: userId,
+            createdBy: ctx.user.id,
+            updatedBy: ctx.user.id,
           },
         });
 
@@ -362,29 +330,28 @@ export const medicationRouter = router({
           HIGH_SEVERITY_CATEGORIES.includes(input.nccMerpCategory)
         ) {
           // Auto-create a draft Care Inspectorate notification
-          await ctx.prisma.careInspectorateNotification.create({
+          await ctx.db.careInspectorateNotification.create({
             data: {
-              organisationId,
+              organisationId: ctx.user.organisationId,
               notificationType: "MEDICATION_ERROR_E_PLUS",
               description: `Auto-generated from medication error report. Category ${input.nccMerpCategory}. ${input.description}`.slice(0, 500),
-              createdBy: userId,
-              updatedBy: userId,
+              createdBy: ctx.user.id,
+              updatedBy: ctx.user.id,
             },
           });
 
           // Notify all MANAGER+ users in the organisation
-          const managers = await ctx.prisma.user.findMany({
+          const managers = await ctx.db.user.findMany({
             where: {
-              organisationId,
               role: { in: ["MANAGER", "ORG_ADMIN", "SUPER_ADMIN"] },
             },
             select: { id: true },
           });
 
           if (managers.length > 0) {
-            await ctx.prisma.notification.createMany({
+            await ctx.db.notification.createMany({
               data: managers.map((mgr) => ({
-                organisationId,
+                organisationId: ctx.user.organisationId,
                 userId: mgr.id,
                 title: `Medication Error — Category ${input.nccMerpCategory} Escalation`,
                 message: `A NCC MERP Category ${input.nccMerpCategory} medication error has been reported. A Care Inspectorate notification draft has been created and investigation is required.`,
@@ -414,18 +381,14 @@ export const medicationRouter = router({
         })
       )
       .mutation(async ({ ctx, input }) => {
-        const { organisationId, id: userId } = ctx.user as {
-          organisationId: string;
-          id: string;
-        };
         const { id, notificationDate, ...data } = input;
-        return ctx.prisma.medicationError.update({
-          where: { id, organisationId },
+        return ctx.db.medicationError.update({
+          where: { id },
           data: {
             ...data,
-            investigatedBy: userId,
+            investigatedBy: ctx.user.id,
             notificationDate: notificationDate ? new Date(notificationDate) : undefined,
-            updatedBy: userId,
+            updatedBy: ctx.user.id,
           },
         });
       }),
@@ -443,17 +406,15 @@ export const medicationRouter = router({
         })
       )
       .query(async ({ ctx, input }) => {
-        const { organisationId } = ctx.user as { organisationId: string };
         const skip = (input.page - 1) * input.limit;
 
         const where = {
-          organisationId,
           ...(input.serviceUserId && { serviceUserId: input.serviceUserId }),
           ...(input.nccMerpCategory && { nccMerpCategory: input.nccMerpCategory }),
         };
 
         const [items, total] = await Promise.all([
-          ctx.prisma.medicationError.findMany({
+          ctx.db.medicationError.findMany({
             where,
             include: {
               serviceUser: {
@@ -470,7 +431,7 @@ export const medicationRouter = router({
             skip,
             take: input.limit,
           }),
-          ctx.prisma.medicationError.count({ where }),
+          ctx.db.medicationError.count({ where }),
         ]);
 
         return { items, total, page: input.page, limit: input.limit };
@@ -482,9 +443,8 @@ export const medicationRouter = router({
     getByServiceUser: medReadProcedure
       .input(z.object({ serviceUserId: z.string().min(1) }))
       .query(async ({ ctx, input }) => {
-        const { organisationId } = ctx.user as { organisationId: string };
-        return ctx.prisma.medicationError.findMany({
-          where: { serviceUserId: input.serviceUserId, organisationId },
+        return ctx.db.medicationError.findMany({
+          where: { serviceUserId: input.serviceUserId },
           include: {
             reportedByStaff: {
               select: { id: true, firstName: true, lastName: true },
@@ -503,9 +463,8 @@ export const medicationRouter = router({
     getById: medReadProcedure
       .input(z.object({ id: z.string().min(1) }))
       .query(async ({ ctx, input }) => {
-        const { organisationId } = ctx.user as { organisationId: string };
-        const error = await ctx.prisma.medicationError.findUnique({
-          where: { id: input.id, organisationId },
+        const error = await ctx.db.medicationError.findUnique({
+          where: { id: input.id },
           include: {
             serviceUser: {
               select: { id: true, firstName: true, lastName: true },
@@ -541,21 +500,17 @@ export const medicationRouter = router({
         })
       )
       .mutation(async ({ ctx, input }) => {
-        const { organisationId, id: userId } = ctx.user as {
-          organisationId: string;
-          id: string;
-        };
         const { auditDate, auditFindings, actionsRequired, ...rest } = input;
-        return ctx.prisma.medicationAudit.create({
+        return ctx.db.medicationAudit.create({
           data: {
             ...rest,
             auditDate: new Date(auditDate),
             auditFindings: auditFindings ?? undefined,
             actionsRequired: actionsRequired ?? undefined,
-            organisationId,
+            organisationId: ctx.user.organisationId,
             status: rest.status ?? "OPEN",
-            createdBy: userId,
-            updatedBy: userId,
+            createdBy: ctx.user.id,
+            updatedBy: ctx.user.id,
           },
         });
       }),
@@ -574,18 +529,14 @@ export const medicationRouter = router({
         })
       )
       .mutation(async ({ ctx, input }) => {
-        const { organisationId, id: userId } = ctx.user as {
-          organisationId: string;
-          id: string;
-        };
         const { id, auditFindings, actionsRequired, ...data } = input;
-        return ctx.prisma.medicationAudit.update({
-          where: { id, organisationId },
+        return ctx.db.medicationAudit.update({
+          where: { id },
           data: {
             ...data,
             auditFindings: auditFindings ?? undefined,
             actionsRequired: actionsRequired ?? undefined,
-            updatedBy: userId,
+            updatedBy: ctx.user.id,
           },
         });
       }),
@@ -602,16 +553,14 @@ export const medicationRouter = router({
         })
       )
       .query(async ({ ctx, input }) => {
-        const { organisationId } = ctx.user as { organisationId: string };
         const skip = (input.page - 1) * input.limit;
 
         const where = {
-          organisationId,
           ...(input.status && { status: input.status }),
         };
 
         const [items, total] = await Promise.all([
-          ctx.prisma.medicationAudit.findMany({
+          ctx.db.medicationAudit.findMany({
             where,
             include: {
               auditor: { select: { id: true, email: true } },
@@ -620,7 +569,7 @@ export const medicationRouter = router({
             skip,
             take: input.limit,
           }),
-          ctx.prisma.medicationAudit.count({ where }),
+          ctx.db.medicationAudit.count({ where }),
         ]);
 
         return { items, total, page: input.page, limit: input.limit };
@@ -632,9 +581,8 @@ export const medicationRouter = router({
     getById: auditsManageProcedure
       .input(z.object({ id: z.string().min(1) }))
       .query(async ({ ctx, input }) => {
-        const { organisationId } = ctx.user as { organisationId: string };
-        const audit = await ctx.prisma.medicationAudit.findUnique({
-          where: { id: input.id, organisationId },
+        const audit = await ctx.db.medicationAudit.findUnique({
+          where: { id: input.id },
           include: {
             auditor: { select: { id: true, email: true } },
           },

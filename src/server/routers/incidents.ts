@@ -66,11 +66,9 @@ export const incidentsRouter = router({
       })
     )
     .query(async ({ ctx, input }) => {
-      const { organisationId } = ctx.user as { organisationId: string };
       const skip = (input.page - 1) * input.limit;
 
       const where = {
-        organisationId,
         ...(input.status && { status: input.status }),
         ...(input.severity && { severity: input.severity }),
         ...(input.serviceUserId && { serviceUserId: input.serviceUserId }),
@@ -85,7 +83,7 @@ export const incidentsRouter = router({
       };
 
       const [items, total] = await Promise.all([
-        ctx.prisma.incident.findMany({
+        ctx.db.incident.findMany({
           where,
           skip,
           take: input.limit,
@@ -96,7 +94,7 @@ export const incidentsRouter = router({
             },
           },
         }),
-        ctx.prisma.incident.count({ where }),
+        ctx.db.incident.count({ where }),
       ]);
 
       return { items, total, page: input.page, limit: input.limit };
@@ -105,9 +103,8 @@ export const incidentsRouter = router({
   getById: protectedProcedure
     .input(z.object({ id: z.string().min(1) }))
     .query(async ({ ctx, input }) => {
-      const { organisationId } = ctx.user as { organisationId: string };
-      return ctx.prisma.incident.findUniqueOrThrow({
-        where: { id: input.id, organisationId },
+      return ctx.db.incident.findUniqueOrThrow({
+        where: { id: input.id },
         include: {
           serviceUser: {
             select: { id: true, firstName: true, lastName: true },
@@ -145,31 +142,26 @@ export const incidentsRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const { organisationId, id: userId } = ctx.user as {
-        organisationId: string;
-        id: string;
-      };
-
       const { incidentDate, ...rest } = input;
 
-      const incident = await ctx.prisma.incident.create({
+      const incident = await ctx.db.incident.create({
         data: {
           ...rest,
           incidentDate: new Date(incidentDate),
-          organisationId,
-          reportedBy: userId,
+          organisationId: ctx.user.organisationId,
+          reportedBy: ctx.user.id,
           reportedDate: new Date(),
-          createdBy: userId,
-          updatedBy: userId,
+          createdBy: ctx.user.id,
+          updatedBy: ctx.user.id,
         },
       });
 
       if (shouldEscalate(input.incidentType, input.severity)) {
         const ciType = getCiNotificationType(input.incidentType);
         if (ciType) {
-          await ctx.prisma.careInspectorateNotification.create({
+          await ctx.db.careInspectorateNotification.create({
             data: {
-              organisationId,
+              organisationId: ctx.user.organisationId,
               incidentId: incident.id,
               notificationType: ciType,
               description:
@@ -177,14 +169,14 @@ export const incidentsRouter = router({
                   0,
                   500
                 ),
-              createdBy: userId,
-              updatedBy: userId,
+              createdBy: ctx.user.id,
+              updatedBy: ctx.user.id,
             },
           });
         }
 
         await notifyManagers(ctx.prisma, {
-          organisationId,
+          organisationId: ctx.user.organisationId,
           title: `Incident Escalation — ${input.incidentType.replace(/_/g, " ")} (${input.severity})`,
           message: `A ${input.severity} severity ${input.incidentType.replace(/_/g, " ").toLowerCase()} has been reported. Immediate management review required.`,
           entityType: "incident",
@@ -214,15 +206,11 @@ export const incidentsRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const { organisationId, id: userId } = ctx.user as {
-        organisationId: string;
-        id: string;
-      };
       const { id, ...data } = input;
 
       if (data.status === "CLOSED") {
-        const existing = await ctx.prisma.incident.findUnique({
-          where: { id, organisationId },
+        const existing = await ctx.db.incident.findUnique({
+          where: { id },
           select: { investigationNotes: true, actionsToPreventRecurrence: true },
         });
 
@@ -246,14 +234,14 @@ export const incidentsRouter = router({
         }
       }
 
-      const updateData: Record<string, unknown> = { ...data, updatedBy: userId };
+      const updateData: Record<string, unknown> = { ...data, updatedBy: ctx.user.id };
       if (data.status === "CLOSED") {
-        updateData.closedBy = userId;
+        updateData.closedBy = ctx.user.id;
         updateData.closedDate = new Date();
       }
 
-      return ctx.prisma.incident.update({
-        where: { id, organisationId },
+      return ctx.db.incident.update({
+        where: { id },
         data: updateData,
       });
     }),
@@ -271,17 +259,15 @@ export const incidentsRouter = router({
         })
       )
       .query(async ({ ctx, input }) => {
-        const { organisationId } = ctx.user as { organisationId: string };
         const skip = (input.page - 1) * input.limit;
 
         const where = {
-          organisationId,
           ...(input.serviceUserId && { serviceUserId: input.serviceUserId }),
           ...(input.status && { status: input.status }),
         };
 
         const [items, total] = await Promise.all([
-          ctx.prisma.safeguardingConcern.findMany({
+          ctx.db.safeguardingConcern.findMany({
             where,
             take: input.limit,
             skip,
@@ -293,7 +279,7 @@ export const incidentsRouter = router({
               raisedByUser: { select: { id: true, email: true } },
             },
           }),
-          ctx.prisma.safeguardingConcern.count({ where }),
+          ctx.db.safeguardingConcern.count({ where }),
         ]);
 
         return { items, total, page: input.page, limit: input.limit };
@@ -302,9 +288,8 @@ export const incidentsRouter = router({
     getById: protectedProcedure
       .input(z.object({ id: z.string().min(1) }))
       .query(async ({ ctx, input }) => {
-        const { organisationId } = ctx.user as { organisationId: string };
-        const concern = await ctx.prisma.safeguardingConcern.findUnique({
-          where: { id: input.id, organisationId },
+        const concern = await ctx.db.safeguardingConcern.findUnique({
+          where: { id: input.id },
           include: {
             serviceUser: {
               select: { id: true, firstName: true, lastName: true },
@@ -331,27 +316,22 @@ export const incidentsRouter = router({
         })
       )
       .mutation(async ({ ctx, input }) => {
-        const { organisationId, id: userId } = ctx.user as {
-          organisationId: string;
-          id: string;
-        };
-
         const { concernDate, ...rest } = input;
 
-        const concern = await ctx.prisma.safeguardingConcern.create({
+        const concern = await ctx.db.safeguardingConcern.create({
           data: {
             ...rest,
             concernType: input.concernType as never,
             concernDate: new Date(concernDate),
-            organisationId,
-            raisedBy: userId,
-            createdBy: userId,
-            updatedBy: userId,
+            organisationId: ctx.user.organisationId,
+            raisedBy: ctx.user.id,
+            createdBy: ctx.user.id,
+            updatedBy: ctx.user.id,
           },
         });
 
         await notifyManagers(ctx.prisma, {
-          organisationId,
+          organisationId: ctx.user.organisationId,
           title: "Safeguarding Concern Raised — 24h Escalation Required",
           message: `A ${input.concernType.replace(/_/g, " ").toLowerCase()} safeguarding concern has been raised. Referral to Adult Support & Protection may be required within 24 hours.`,
           entityType: "safeguarding",
@@ -379,17 +359,13 @@ export const incidentsRouter = router({
         })
       )
       .mutation(async ({ ctx, input }) => {
-        const { organisationId, id: userId } = ctx.user as {
-          organisationId: string;
-          id: string;
-        };
         const { id, referralDate, ...data } = input;
-        return ctx.prisma.safeguardingConcern.update({
-          where: { id, organisationId },
+        return ctx.db.safeguardingConcern.update({
+          where: { id },
           data: {
             ...data,
             referralDate: referralDate ? new Date(referralDate) : undefined,
-            updatedBy: userId,
+            updatedBy: ctx.user.id,
           },
         });
       }),
@@ -406,13 +382,10 @@ export const incidentsRouter = router({
         })
       )
       .query(async ({ ctx, input }) => {
-        const { organisationId } = ctx.user as { organisationId: string };
         const skip = (input.page - 1) * input.limit;
-        const where = { organisationId };
 
         const [items, total] = await Promise.all([
-          ctx.prisma.careInspectorateNotification.findMany({
-            where,
+          ctx.db.careInspectorateNotification.findMany({
             skip,
             take: input.limit,
             orderBy: { createdAt: "desc" },
@@ -427,16 +400,15 @@ export const incidentsRouter = router({
               },
             },
           }),
-          ctx.prisma.careInspectorateNotification.count({ where }),
+          ctx.db.careInspectorateNotification.count(),
         ]);
 
         return { items, total, page: input.page, limit: input.limit };
       }),
 
     getPending: incManageProcedure.query(async ({ ctx }) => {
-      const { organisationId } = ctx.user as { organisationId: string };
-      return ctx.prisma.careInspectorateNotification.findMany({
-        where: { organisationId, submittedDate: null },
+      return ctx.db.careInspectorateNotification.findMany({
+        where: { submittedDate: null },
         orderBy: { createdAt: "desc" },
         include: {
           incident: {
@@ -461,16 +433,12 @@ export const incidentsRouter = router({
         })
       )
       .mutation(async ({ ctx, input }) => {
-        const { organisationId, id: userId } = ctx.user as {
-          organisationId: string;
-          id: string;
-        };
-        return ctx.prisma.careInspectorateNotification.create({
+        return ctx.db.careInspectorateNotification.create({
           data: {
             ...input,
-            organisationId,
-            createdBy: userId,
-            updatedBy: userId,
+            organisationId: ctx.user.organisationId,
+            createdBy: ctx.user.id,
+            updatedBy: ctx.user.id,
           },
         });
       }),
@@ -490,18 +458,14 @@ export const incidentsRouter = router({
         })
       )
       .mutation(async ({ ctx, input }) => {
-        const { organisationId, id: userId } = ctx.user as {
-          organisationId: string;
-          id: string;
-        };
         const { id, submittedDate, ...data } = input;
-        return ctx.prisma.careInspectorateNotification.update({
-          where: { id, organisationId },
+        return ctx.db.careInspectorateNotification.update({
+          where: { id },
           data: {
             ...data,
             submittedDate: submittedDate ? new Date(submittedDate) : undefined,
-            submittedBy: submittedDate ? userId : undefined,
-            updatedBy: userId,
+            submittedBy: submittedDate ? ctx.user.id : undefined,
+            updatedBy: ctx.user.id,
           },
         });
       }),
@@ -519,16 +483,14 @@ export const incidentsRouter = router({
         })
       )
       .query(async ({ ctx, input }) => {
-        const { organisationId } = ctx.user as { organisationId: string };
         const skip = (input.page - 1) * input.limit;
 
         const where = {
-          organisationId,
           ...(input.equipmentType && { equipmentType: input.equipmentType }),
         };
 
         const [items, total] = await Promise.all([
-          ctx.prisma.equipmentCheck.findMany({
+          ctx.db.equipmentCheck.findMany({
             where,
             skip,
             take: input.limit,
@@ -537,7 +499,7 @@ export const incidentsRouter = router({
               checkedByUser: { select: { id: true, email: true } },
             },
           }),
-          ctx.prisma.equipmentCheck.count({ where }),
+          ctx.db.equipmentCheck.count({ where }),
         ]);
 
         return { items, total, page: input.page, limit: input.limit };
@@ -548,10 +510,7 @@ export const incidentsRouter = router({
      * Overdue = nextCheckDate in the past.
      */
     listCurrent: protectedProcedure.query(async ({ ctx }) => {
-      const { organisationId } = ctx.user as { organisationId: string };
-
-      const allChecks = await ctx.prisma.equipmentCheck.findMany({
-        where: { organisationId },
+      const allChecks = await ctx.db.equipmentCheck.findMany({
         orderBy: [{ equipmentName: "asc" }, { checkDate: "desc" }],
         include: {
           checkedByUser: { select: { id: true, email: true } },
@@ -582,20 +541,16 @@ export const incidentsRouter = router({
         })
       )
       .mutation(async ({ ctx, input }) => {
-        const { organisationId, id: userId } = ctx.user as {
-          organisationId: string;
-          id: string;
-        };
         const { checkDate, nextCheckDate, ...rest } = input;
-        return ctx.prisma.equipmentCheck.create({
+        return ctx.db.equipmentCheck.create({
           data: {
             ...rest,
             checkDate: new Date(checkDate),
             nextCheckDate: nextCheckDate ? new Date(nextCheckDate) : undefined,
-            organisationId,
-            checkedBy: userId,
-            createdBy: userId,
-            updatedBy: userId,
+            organisationId: ctx.user.organisationId,
+            checkedBy: ctx.user.id,
+            createdBy: ctx.user.id,
+            updatedBy: ctx.user.id,
           },
         });
       }),
@@ -613,10 +568,8 @@ export const incidentsRouter = router({
       })
     )
     .query(async ({ ctx, input }) => {
-      const { organisationId } = ctx.user as { organisationId: string };
-      return ctx.prisma.safeguardingConcern.findMany({
+      return ctx.db.safeguardingConcern.findMany({
         where: {
-          organisationId,
           ...(input.serviceUserId && { serviceUserId: input.serviceUserId }),
         },
         take: input.limit,
@@ -642,18 +595,14 @@ export const incidentsRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const { organisationId, id: userId } = ctx.user as {
-        organisationId: string;
-        id: string;
-      };
-      return ctx.prisma.safeguardingConcern.create({
+      return ctx.db.safeguardingConcern.create({
         data: {
           ...input,
           concernType: input.concernType as never,
-          organisationId,
-          raisedBy: userId,
-          createdBy: userId,
-          updatedBy: userId,
+          organisationId: ctx.user.organisationId,
+          raisedBy: ctx.user.id,
+          createdBy: ctx.user.id,
+          updatedBy: ctx.user.id,
         },
       });
     }),
