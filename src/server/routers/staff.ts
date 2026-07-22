@@ -28,11 +28,9 @@ export const staffRouter = router({
       })
     )
     .query(async ({ ctx, input }) => {
-      const { organisationId } = ctx.user as { organisationId: string };
       const skip = (input.page - 1) * input.limit;
 
       const where = {
-        organisationId,
         ...(input.status && { status: input.status }),
         ...(input.roleType && { roleType: input.roleType }),
         ...(input.search && {
@@ -45,7 +43,7 @@ export const staffRouter = router({
       };
 
       const [items, total] = await Promise.all([
-        ctx.prisma.staffMember.findMany({
+        ctx.db.staffMember.findMany({
           where,
           skip,
           take: input.limit,
@@ -63,7 +61,7 @@ export const staffRouter = router({
             email: true,
           },
         }),
-        ctx.prisma.staffMember.count({ where }),
+        ctx.db.staffMember.count({ where }),
       ]);
 
       return { items, total, page: input.page, limit: input.limit };
@@ -72,9 +70,8 @@ export const staffRouter = router({
   getById: protectedProcedure
     .input(z.object({ id: z.string().min(1) }))
     .query(async ({ ctx, input }) => {
-      const { organisationId } = ctx.user as { organisationId: string };
-      return ctx.prisma.staffMember.findUniqueOrThrow({
-        where: { id: input.id, organisationId },
+      return ctx.db.staffMember.findUniqueOrThrow({
+        where: { id: input.id },
         include: {
           users: { select: { id: true, email: true, role: true, isActive: true } },
           pvgRecords: true,
@@ -93,11 +90,10 @@ export const staffRouter = router({
   getRecruitmentStatus: protectedProcedure
     .input(z.object({ id: z.string().min(1) }))
     .query(async ({ ctx, input }) => {
-      const { organisationId } = ctx.user as { organisationId: string };
       const today = new Date();
 
-      const staff = await ctx.prisma.staffMember.findUniqueOrThrow({
-        where: { id: input.id, organisationId },
+      const staff = await ctx.db.staffMember.findUniqueOrThrow({
+        where: { id: input.id },
         include: {
           pvgRecords: true,
           registrations: true,
@@ -177,12 +173,8 @@ export const staffRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const { organisationId, id: userId } = ctx.user as {
-        organisationId: string;
-        id: string;
-      };
-      return ctx.prisma.staffMember.create({
-        data: { ...input, organisationId, createdBy: userId, updatedBy: userId },
+      return ctx.db.staffMember.create({
+        data: { ...input, organisationId: ctx.user.organisationId, createdBy: ctx.user.id, updatedBy: ctx.user.id },
       });
     }),
 
@@ -210,14 +202,10 @@ export const staffRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const { organisationId, id: userId } = ctx.user as {
-        organisationId: string;
-        id: string;
-      };
       const { id, ...data } = input;
-      return ctx.prisma.staffMember.update({
-        where: { id, organisationId },
-        data: { ...data, updatedBy: userId },
+      return ctx.db.staffMember.update({
+        where: { id },
+        data: { ...data, updatedBy: ctx.user.id },
       });
     }),
 
@@ -230,14 +218,10 @@ export const staffRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const { organisationId, id: userId } = ctx.user as {
-        organisationId: string;
-        id: string;
-      };
       const { id, ...data } = input;
-      return ctx.prisma.staffMember.update({
-        where: { id, organisationId },
-        data: { ...data, updatedBy: userId },
+      return ctx.db.staffMember.update({
+        where: { id },
+        data: { ...data, updatedBy: ctx.user.id },
       });
     }),
 
@@ -255,17 +239,13 @@ export const staffRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const { organisationId, id: userId } = ctx.user as {
-        organisationId: string;
-        id: string;
-      };
-      return ctx.prisma.staffTrainingRecord.create({
+      return ctx.db.staffTrainingRecord.create({
         data: {
           ...input,
           trainingType: input.trainingType as never,
-          organisationId,
-          createdBy: userId,
-          updatedBy: userId,
+          organisationId: ctx.user.organisationId,
+          createdBy: ctx.user.id,
+          updatedBy: ctx.user.id,
         },
       });
     }),
@@ -288,12 +268,8 @@ export const staffRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const { organisationId, id: userId } = ctx.user as {
-        organisationId: string;
-        id: string;
-      };
-      return ctx.prisma.staffSupervision.create({
-        data: { ...input, organisationId, createdBy: userId, updatedBy: userId },
+      return ctx.db.staffSupervision.create({
+        data: { ...input, organisationId: ctx.user.organisationId, createdBy: ctx.user.id, updatedBy: ctx.user.id },
       });
     }),
 
@@ -302,9 +278,8 @@ export const staffRouter = router({
     getByStaff: staffReadProcedure
       .input(z.object({ staffMemberId: z.string().min(1) }))
       .query(async ({ ctx, input }) => {
-        const { organisationId } = ctx.user as { organisationId: string };
-        return ctx.prisma.staffPvgRecord.findMany({
-          where: { staffMemberId: input.staffMemberId, organisationId },
+        return ctx.db.staffPvgRecord.findMany({
+          where: { staffMemberId: input.staffMemberId },
           orderBy: { createdAt: "desc" },
         });
       }),
@@ -323,9 +298,8 @@ export const staffRouter = router({
         })
       )
       .mutation(async ({ ctx, input }) => {
-        const { organisationId, id: userId } = ctx.user as { organisationId: string; id: string };
-        return ctx.prisma.staffPvgRecord.create({
-          data: { ...input, organisationId, createdBy: userId, updatedBy: userId },
+        return ctx.db.staffPvgRecord.create({
+          data: { ...input, organisationId: ctx.user.organisationId, createdBy: ctx.user.id, updatedBy: ctx.user.id },
         });
       }),
 
@@ -343,18 +317,24 @@ export const staffRouter = router({
         })
       )
       .mutation(async ({ ctx, input }) => {
-        const { organisationId, id: userId } = ctx.user as { organisationId: string; id: string };
         const { id, ...data } = input;
+        // Deliberately ctx.prisma here, not ctx.db: this fetch exists to
+        // compare org ownership and throw a clean FORBIDDEN. Using the
+        // org-scoped client would make findUniqueOrThrow itself throw
+        // P2025 for a cross-org id, masking the 403 as an uncaught 500
+        // before this check ever runs. Same pattern repeats for every
+        // sub-entity below (registration, reference, health, training,
+        // supervision, appraisal, absence, induction, disciplinary, leaving).
         const record = await ctx.prisma.staffPvgRecord.findUniqueOrThrow({
           where: { id },
           select: { organisationId: true },
         });
-        if (record.organisationId !== organisationId) {
+        if (record.organisationId !== ctx.user.organisationId) {
           throw new TRPCError({ code: "FORBIDDEN" });
         }
-        return ctx.prisma.staffPvgRecord.update({
+        return ctx.db.staffPvgRecord.update({
           where: { id },
-          data: { ...data, updatedBy: userId },
+          data: { ...data, updatedBy: ctx.user.id },
         });
       }),
   }),
@@ -364,9 +344,8 @@ export const staffRouter = router({
     getByStaff: staffReadProcedure
       .input(z.object({ staffMemberId: z.string().min(1) }))
       .query(async ({ ctx, input }) => {
-        const { organisationId } = ctx.user as { organisationId: string };
-        return ctx.prisma.staffRegistration.findMany({
-          where: { staffMemberId: input.staffMemberId, organisationId },
+        return ctx.db.staffRegistration.findMany({
+          where: { staffMemberId: input.staffMemberId },
           orderBy: { createdAt: "desc" },
         });
       }),
@@ -383,9 +362,8 @@ export const staffRouter = router({
         })
       )
       .mutation(async ({ ctx, input }) => {
-        const { organisationId, id: userId } = ctx.user as { organisationId: string; id: string };
-        return ctx.prisma.staffRegistration.create({
-          data: { ...input, organisationId, createdBy: userId, updatedBy: userId },
+        return ctx.db.staffRegistration.create({
+          data: { ...input, organisationId: ctx.user.organisationId, createdBy: ctx.user.id, updatedBy: ctx.user.id },
         });
       }),
 
@@ -401,18 +379,17 @@ export const staffRouter = router({
         })
       )
       .mutation(async ({ ctx, input }) => {
-        const { organisationId, id: userId } = ctx.user as { organisationId: string; id: string };
         const { id, ...data } = input;
         const record = await ctx.prisma.staffRegistration.findUniqueOrThrow({
           where: { id },
           select: { organisationId: true },
         });
-        if (record.organisationId !== organisationId) {
+        if (record.organisationId !== ctx.user.organisationId) {
           throw new TRPCError({ code: "FORBIDDEN" });
         }
-        return ctx.prisma.staffRegistration.update({
+        return ctx.db.staffRegistration.update({
           where: { id },
-          data: { ...data, updatedBy: userId },
+          data: { ...data, updatedBy: ctx.user.id },
         });
       }),
   }),
@@ -422,9 +399,8 @@ export const staffRouter = router({
     getByStaff: staffReadProcedure
       .input(z.object({ staffMemberId: z.string().min(1) }))
       .query(async ({ ctx, input }) => {
-        const { organisationId } = ctx.user as { organisationId: string };
-        return ctx.prisma.staffReference.findMany({
-          where: { staffMemberId: input.staffMemberId, organisationId },
+        return ctx.db.staffReference.findMany({
+          where: { staffMemberId: input.staffMemberId },
           orderBy: { createdAt: "desc" },
         });
       }),
@@ -444,9 +420,8 @@ export const staffRouter = router({
         })
       )
       .mutation(async ({ ctx, input }) => {
-        const { organisationId, id: userId } = ctx.user as { organisationId: string; id: string };
-        return ctx.prisma.staffReference.create({
-          data: { ...input, organisationId, createdBy: userId, updatedBy: userId },
+        return ctx.db.staffReference.create({
+          data: { ...input, organisationId: ctx.user.organisationId, createdBy: ctx.user.id, updatedBy: ctx.user.id },
         });
       }),
 
@@ -466,18 +441,17 @@ export const staffRouter = router({
         })
       )
       .mutation(async ({ ctx, input }) => {
-        const { organisationId, id: userId } = ctx.user as { organisationId: string; id: string };
         const { id, ...data } = input;
         const record = await ctx.prisma.staffReference.findUniqueOrThrow({
           where: { id },
           select: { organisationId: true },
         });
-        if (record.organisationId !== organisationId) {
+        if (record.organisationId !== ctx.user.organisationId) {
           throw new TRPCError({ code: "FORBIDDEN" });
         }
-        return ctx.prisma.staffReference.update({
+        return ctx.db.staffReference.update({
           where: { id },
-          data: { ...data, updatedBy: userId },
+          data: { ...data, updatedBy: ctx.user.id },
         });
       }),
   }),
@@ -487,9 +461,8 @@ export const staffRouter = router({
     getByStaff: staffReadProcedure
       .input(z.object({ staffMemberId: z.string().min(1) }))
       .query(async ({ ctx, input }) => {
-        const { organisationId } = ctx.user as { organisationId: string };
-        return ctx.prisma.staffHealthDeclaration.findMany({
-          where: { staffMemberId: input.staffMemberId, organisationId },
+        return ctx.db.staffHealthDeclaration.findMany({
+          where: { staffMemberId: input.staffMemberId },
           orderBy: { declarationDate: "desc" },
         });
       }),
@@ -514,9 +487,8 @@ export const staffRouter = router({
         })
       )
       .mutation(async ({ ctx, input }) => {
-        const { organisationId, id: userId } = ctx.user as { organisationId: string; id: string };
-        return ctx.prisma.staffHealthDeclaration.create({
-          data: { ...input, organisationId, createdBy: userId, updatedBy: userId },
+        return ctx.db.staffHealthDeclaration.create({
+          data: { ...input, organisationId: ctx.user.organisationId, createdBy: ctx.user.id, updatedBy: ctx.user.id },
         });
       }),
 
@@ -540,18 +512,17 @@ export const staffRouter = router({
         })
       )
       .mutation(async ({ ctx, input }) => {
-        const { organisationId, id: userId } = ctx.user as { organisationId: string; id: string };
         const { id, ...data } = input;
         const record = await ctx.prisma.staffHealthDeclaration.findUniqueOrThrow({
           where: { id },
           select: { organisationId: true },
         });
-        if (record.organisationId !== organisationId) {
+        if (record.organisationId !== ctx.user.organisationId) {
           throw new TRPCError({ code: "FORBIDDEN" });
         }
-        return ctx.prisma.staffHealthDeclaration.update({
+        return ctx.db.staffHealthDeclaration.update({
           where: { id },
-          data: { ...data, updatedBy: userId },
+          data: { ...data, updatedBy: ctx.user.id },
         });
       }),
   }),
@@ -561,13 +532,12 @@ export const staffRouter = router({
     getByStaff: staffReadProcedure
       .input(z.object({ staffMemberId: z.string().min(1) }))
       .query(async ({ ctx, input }) => {
-        const { organisationId } = ctx.user as { organisationId: string };
-        const staff = await ctx.prisma.staffMember.findUniqueOrThrow({
-          where: { id: input.staffMemberId, organisationId },
+        const staff = await ctx.db.staffMember.findUniqueOrThrow({
+          where: { id: input.staffMemberId },
           select: { roleType: true },
         });
-        const records = await ctx.prisma.staffTrainingRecord.findMany({
-          where: { staffMemberId: input.staffMemberId, organisationId },
+        const records = await ctx.db.staffTrainingRecord.findMany({
+          where: { staffMemberId: input.staffMemberId },
           orderBy: { completionDate: "desc" },
         });
         return { records, mandatory: getMandatoryTraining(staff.roleType) };
@@ -586,9 +556,8 @@ export const staffRouter = router({
         })
       )
       .mutation(async ({ ctx, input }) => {
-        const { organisationId, id: userId } = ctx.user as { organisationId: string; id: string };
-        return ctx.prisma.staffTrainingRecord.create({
-          data: { ...input, organisationId, createdBy: userId, updatedBy: userId },
+        return ctx.db.staffTrainingRecord.create({
+          data: { ...input, organisationId: ctx.user.organisationId, createdBy: ctx.user.id, updatedBy: ctx.user.id },
         });
       }),
 
@@ -605,18 +574,17 @@ export const staffRouter = router({
         })
       )
       .mutation(async ({ ctx, input }) => {
-        const { organisationId, id: userId } = ctx.user as { organisationId: string; id: string };
         const { id, ...data } = input;
         const record = await ctx.prisma.staffTrainingRecord.findUniqueOrThrow({
           where: { id },
           select: { organisationId: true },
         });
-        if (record.organisationId !== organisationId) {
+        if (record.organisationId !== ctx.user.organisationId) {
           throw new TRPCError({ code: "FORBIDDEN" });
         }
-        return ctx.prisma.staffTrainingRecord.update({
+        return ctx.db.staffTrainingRecord.update({
           where: { id },
-          data: { ...data, updatedBy: userId },
+          data: { ...data, updatedBy: ctx.user.id },
         });
       }),
 
@@ -627,11 +595,8 @@ export const staffRouter = router({
         })
       )
       .query(async ({ ctx, input }) => {
-        const { organisationId } = ctx.user as { organisationId: string };
-
-        const staff = await ctx.prisma.staffMember.findMany({
+        const staff = await ctx.db.staffMember.findMany({
           where: {
-            organisationId,
             status: "ACTIVE",
             ...(input.roleType && { roleType: input.roleType }),
           },
@@ -680,7 +645,6 @@ export const staffRouter = router({
         })
       )
       .query(async ({ ctx, input }) => {
-        const { organisationId } = ctx.user as { organisationId: string };
         const today = new Date();
         today.setHours(0, 0, 0, 0);
         const cutoff = new Date(today);
@@ -693,12 +657,11 @@ export const staffRouter = router({
         }
 
         const staffFilter = {
-          organisationId,
           staffMember: { status: { not: "LEFT" as const } },
         };
 
         const [trainingRecords, pvgRecords, registrationRecords] = await Promise.all([
-          ctx.prisma.staffTrainingRecord.findMany({
+          ctx.db.staffTrainingRecord.findMany({
             where: { ...staffFilter, expiryDate: { lte: cutoff } },
             include: {
               staffMember: {
@@ -707,7 +670,7 @@ export const staffRouter = router({
             },
             orderBy: { expiryDate: "asc" },
           }),
-          ctx.prisma.staffPvgRecord.findMany({
+          ctx.db.staffPvgRecord.findMany({
             where: { ...staffFilter, renewalDate: { lte: cutoff, not: null } },
             include: {
               staffMember: {
@@ -716,7 +679,7 @@ export const staffRouter = router({
             },
             orderBy: { renewalDate: "asc" },
           }),
-          ctx.prisma.staffRegistration.findMany({
+          ctx.db.staffRegistration.findMany({
             where: { ...staffFilter, expiryDate: { lte: cutoff, not: null } },
             include: {
               staffMember: {
@@ -776,9 +739,8 @@ export const staffRouter = router({
     getByStaff: staffReadProcedure
       .input(z.object({ staffMemberId: z.string().min(1) }))
       .query(async ({ ctx, input }) => {
-        const { organisationId } = ctx.user as { organisationId: string };
-        return ctx.prisma.staffSupervision.findMany({
-          where: { staffMemberId: input.staffMemberId, organisationId },
+        return ctx.db.staffSupervision.findMany({
+          where: { staffMemberId: input.staffMemberId },
           include: {
             supervisor: { select: { id: true, firstName: true, lastName: true } },
           },
@@ -807,9 +769,8 @@ export const staffRouter = router({
         })
       )
       .mutation(async ({ ctx, input }) => {
-        const { organisationId, id: userId } = ctx.user as { organisationId: string; id: string };
-        return ctx.prisma.staffSupervision.create({
-          data: { ...input, organisationId, createdBy: userId, updatedBy: userId },
+        return ctx.db.staffSupervision.create({
+          data: { ...input, organisationId: ctx.user.organisationId, createdBy: ctx.user.id, updatedBy: ctx.user.id },
         });
       }),
 
@@ -834,11 +795,10 @@ export const staffRouter = router({
         })
       )
       .mutation(async ({ ctx, input }) => {
-        const { organisationId, id: userId } = ctx.user as { organisationId: string; id: string };
         const { id, ...data } = input;
         const rec = await ctx.prisma.staffSupervision.findUniqueOrThrow({ where: { id }, select: { organisationId: true } });
-        if (rec.organisationId !== organisationId) throw new TRPCError({ code: "FORBIDDEN" });
-        return ctx.prisma.staffSupervision.update({ where: { id }, data: { ...data, updatedBy: userId } });
+        if (rec.organisationId !== ctx.user.organisationId) throw new TRPCError({ code: "FORBIDDEN" });
+        return ctx.db.staffSupervision.update({ where: { id }, data: { ...data, updatedBy: ctx.user.id } });
       }),
   }),
 
@@ -847,9 +807,8 @@ export const staffRouter = router({
     getByStaff: staffReadProcedure
       .input(z.object({ staffMemberId: z.string().min(1) }))
       .query(async ({ ctx, input }) => {
-        const { organisationId } = ctx.user as { organisationId: string };
-        return ctx.prisma.staffAppraisal.findMany({
-          where: { staffMemberId: input.staffMemberId, organisationId },
+        return ctx.db.staffAppraisal.findMany({
+          where: { staffMemberId: input.staffMemberId },
           include: {
             appraiser: { select: { id: true, firstName: true, lastName: true } },
           },
@@ -875,21 +834,20 @@ export const staffRouter = router({
         })
       )
       .mutation(async ({ ctx, input }) => {
-        const { organisationId, id: userId } = ctx.user as { organisationId: string; id: string };
         const { goals, competencyRatings, ...rest } = input;
         // Normalise goals and ratings into JSON-compatible shapes
         const goalsJson = goals ?? undefined;
         const ratingsJson = competencyRatings
           ? Object.fromEntries(competencyRatings.map((r) => [r.competency, r.rating]))
           : undefined;
-        return ctx.prisma.staffAppraisal.create({
+        return ctx.db.staffAppraisal.create({
           data: {
             ...rest,
             ...(goalsJson !== undefined && { goals: goalsJson }),
             ...(ratingsJson !== undefined && { competencyRatings: ratingsJson }),
-            organisationId,
-            createdBy: userId,
-            updatedBy: userId,
+            organisationId: ctx.user.organisationId,
+            createdBy: ctx.user.id,
+            updatedBy: ctx.user.id,
           },
         });
       }),
@@ -912,17 +870,16 @@ export const staffRouter = router({
         })
       )
       .mutation(async ({ ctx, input }) => {
-        const { organisationId, id: userId } = ctx.user as { organisationId: string; id: string };
         const { id, goals, competencyRatings, ...rest } = input;
         const rec = await ctx.prisma.staffAppraisal.findUniqueOrThrow({ where: { id }, select: { organisationId: true } });
-        if (rec.organisationId !== organisationId) throw new TRPCError({ code: "FORBIDDEN" });
+        if (rec.organisationId !== ctx.user.organisationId) throw new TRPCError({ code: "FORBIDDEN" });
         const goalsJson = goals !== undefined ? (goals as object) : undefined;
         const ratingsJson = competencyRatings !== undefined
           ? Object.fromEntries(competencyRatings.map((r) => [r.competency, r.rating]))
           : undefined;
-        return ctx.prisma.staffAppraisal.update({
+        return ctx.db.staffAppraisal.update({
           where: { id },
-          data: { ...rest, ...(goalsJson !== undefined && { goals: goalsJson }), ...(ratingsJson !== undefined && { competencyRatings: ratingsJson }), updatedBy: userId },
+          data: { ...rest, ...(goalsJson !== undefined && { goals: goalsJson }), ...(ratingsJson !== undefined && { competencyRatings: ratingsJson }), updatedBy: ctx.user.id },
         });
       }),
   }),
@@ -932,9 +889,8 @@ export const staffRouter = router({
     getByStaff: staffReadProcedure
       .input(z.object({ staffMemberId: z.string().min(1) }))
       .query(async ({ ctx, input }) => {
-        const { organisationId } = ctx.user as { organisationId: string };
-        return ctx.prisma.staffAbsenceRecord.findMany({
-          where: { staffMemberId: input.staffMemberId, organisationId },
+        return ctx.db.staffAbsenceRecord.findMany({
+          where: { staffMemberId: input.staffMemberId },
           orderBy: { startDate: "desc" },
         });
       }),
@@ -942,9 +898,8 @@ export const staffRouter = router({
     getSummary: staffReadProcedure
       .input(z.object({ staffMemberId: z.string().min(1) }))
       .query(async ({ ctx, input }) => {
-        const { organisationId } = ctx.user as { organisationId: string };
-        const absences = await ctx.prisma.staffAbsenceRecord.findMany({
-          where: { staffMemberId: input.staffMemberId, organisationId },
+        const absences = await ctx.db.staffAbsenceRecord.findMany({
+          where: { staffMemberId: input.staffMemberId },
         });
         const sickDays = absences
           .filter((a) => a.absenceType === "SICK")
@@ -984,9 +939,8 @@ export const staffRouter = router({
         })
       )
       .mutation(async ({ ctx, input }) => {
-        const { organisationId, id: userId } = ctx.user as { organisationId: string; id: string };
-        return ctx.prisma.staffAbsenceRecord.create({
-          data: { ...input, organisationId, createdBy: userId, updatedBy: userId },
+        return ctx.db.staffAbsenceRecord.create({
+          data: { ...input, organisationId: ctx.user.organisationId, createdBy: ctx.user.id, updatedBy: ctx.user.id },
         });
       }),
 
@@ -1005,11 +959,10 @@ export const staffRouter = router({
         })
       )
       .mutation(async ({ ctx, input }) => {
-        const { organisationId, id: userId } = ctx.user as { organisationId: string; id: string };
         const { id, ...data } = input;
         const rec = await ctx.prisma.staffAbsenceRecord.findUniqueOrThrow({ where: { id }, select: { organisationId: true } });
-        if (rec.organisationId !== organisationId) throw new TRPCError({ code: "FORBIDDEN" });
-        return ctx.prisma.staffAbsenceRecord.update({ where: { id }, data: { ...data, updatedBy: userId } });
+        if (rec.organisationId !== ctx.user.organisationId) throw new TRPCError({ code: "FORBIDDEN" });
+        return ctx.db.staffAbsenceRecord.update({ where: { id }, data: { ...data, updatedBy: ctx.user.id } });
       }),
   }),
 
@@ -1018,13 +971,9 @@ export const staffRouter = router({
     getByStaff: staffReadProcedure
       .input(z.object({ staffMemberId: z.string().min(1) }))
       .query(async ({ ctx, input }) => {
-        const { organisationId } = ctx.user as { organisationId: string };
-        return ctx.prisma.staffInduction.findUnique({
+        return ctx.db.staffInduction.findUnique({
           where: { staffMemberId: input.staffMemberId },
           include: { mentor: { select: { id: true, firstName: true, lastName: true } } },
-        }).then((rec) => {
-          if (rec && rec.organisationId !== organisationId) return null;
-          return rec;
         });
       }),
 
@@ -1046,9 +995,8 @@ export const staffRouter = router({
         })
       )
       .mutation(async ({ ctx, input }) => {
-        const { organisationId, id: userId } = ctx.user as { organisationId: string; id: string };
-        return ctx.prisma.staffInduction.create({
-          data: { ...input, organisationId, createdBy: userId, updatedBy: userId },
+        return ctx.db.staffInduction.create({
+          data: { ...input, organisationId: ctx.user.organisationId, createdBy: ctx.user.id, updatedBy: ctx.user.id },
         });
       }),
 
@@ -1070,11 +1018,10 @@ export const staffRouter = router({
         })
       )
       .mutation(async ({ ctx, input }) => {
-        const { organisationId, id: userId } = ctx.user as { organisationId: string; id: string };
         const { id, ...data } = input;
         const rec = await ctx.prisma.staffInduction.findUniqueOrThrow({ where: { id }, select: { organisationId: true } });
-        if (rec.organisationId !== organisationId) throw new TRPCError({ code: "FORBIDDEN" });
-        return ctx.prisma.staffInduction.update({ where: { id }, data: { ...data, updatedBy: userId } });
+        if (rec.organisationId !== ctx.user.organisationId) throw new TRPCError({ code: "FORBIDDEN" });
+        return ctx.db.staffInduction.update({ where: { id }, data: { ...data, updatedBy: ctx.user.id } });
       }),
   }),
 
@@ -1084,9 +1031,8 @@ export const staffRouter = router({
       .use(requirePermission("staff.manage"))
       .input(z.object({ staffMemberId: z.string().min(1) }))
       .query(async ({ ctx, input }) => {
-        const { organisationId } = ctx.user as { organisationId: string };
-        return ctx.prisma.staffDisciplinaryRecord.findMany({
-          where: { staffMemberId: input.staffMemberId, organisationId },
+        return ctx.db.staffDisciplinaryRecord.findMany({
+          where: { staffMemberId: input.staffMemberId },
           orderBy: { dateRaised: "desc" },
         });
       }),
@@ -1106,9 +1052,8 @@ export const staffRouter = router({
         })
       )
       .mutation(async ({ ctx, input }) => {
-        const { organisationId, id: userId } = ctx.user as { organisationId: string; id: string };
-        return ctx.prisma.staffDisciplinaryRecord.create({
-          data: { ...input, organisationId, createdBy: userId, updatedBy: userId },
+        return ctx.db.staffDisciplinaryRecord.create({
+          data: { ...input, organisationId: ctx.user.organisationId, createdBy: ctx.user.id, updatedBy: ctx.user.id },
         });
       }),
 
@@ -1127,11 +1072,10 @@ export const staffRouter = router({
         })
       )
       .mutation(async ({ ctx, input }) => {
-        const { organisationId, id: userId } = ctx.user as { organisationId: string; id: string };
         const { id, ...data } = input;
         const rec = await ctx.prisma.staffDisciplinaryRecord.findUniqueOrThrow({ where: { id }, select: { organisationId: true } });
-        if (rec.organisationId !== organisationId) throw new TRPCError({ code: "FORBIDDEN" });
-        return ctx.prisma.staffDisciplinaryRecord.update({ where: { id }, data: { ...data, updatedBy: userId } });
+        if (rec.organisationId !== ctx.user.organisationId) throw new TRPCError({ code: "FORBIDDEN" });
+        return ctx.db.staffDisciplinaryRecord.update({ where: { id }, data: { ...data, updatedBy: ctx.user.id } });
       }),
   }),
 
@@ -1140,9 +1084,8 @@ export const staffRouter = router({
     getByStaff: staffReadProcedure
       .input(z.object({ staffMemberId: z.string().min(1) }))
       .query(async ({ ctx, input }) => {
-        const { organisationId } = ctx.user as { organisationId: string };
-        return ctx.prisma.staffLeaving.findFirst({
-          where: { staffMemberId: input.staffMemberId, organisationId },
+        return ctx.db.staffLeaving.findFirst({
+          where: { staffMemberId: input.staffMemberId },
         });
       }),
 
@@ -1167,22 +1110,21 @@ export const staffRouter = router({
         })
       )
       .mutation(async ({ ctx, input }) => {
-        const { organisationId, id: userId } = ctx.user as { organisationId: string; id: string };
         const { staffMemberId, leavingDate, ...rest } = input;
-        return ctx.prisma.$transaction(async (tx) => {
+        return ctx.db.$transaction(async (tx) => {
           const leaving = await tx.staffLeaving.create({
             data: {
               staffMemberId,
               leavingDate,
               ...rest,
-              organisationId,
-              createdBy: userId,
-              updatedBy: userId,
+              organisationId: ctx.user.organisationId,
+              createdBy: ctx.user.id,
+              updatedBy: ctx.user.id,
             },
           });
           await tx.staffMember.update({
             where: { id: staffMemberId },
-            data: { status: "LEFT", endDate: leavingDate, updatedBy: userId },
+            data: { status: "LEFT", endDate: leavingDate, updatedBy: ctx.user.id },
           });
           return leaving;
         });
@@ -1209,19 +1151,18 @@ export const staffRouter = router({
         })
       )
       .mutation(async ({ ctx, input }) => {
-        const { organisationId, id: userId } = ctx.user as { organisationId: string; id: string };
         const { id, leavingDate, ...data } = input;
         const rec = await ctx.prisma.staffLeaving.findUniqueOrThrow({ where: { id }, select: { organisationId: true, staffMemberId: true } });
-        if (rec.organisationId !== organisationId) throw new TRPCError({ code: "FORBIDDEN" });
-        return ctx.prisma.$transaction(async (tx) => {
+        if (rec.organisationId !== ctx.user.organisationId) throw new TRPCError({ code: "FORBIDDEN" });
+        return ctx.db.$transaction(async (tx) => {
           const updated = await tx.staffLeaving.update({
             where: { id },
-            data: { ...data, ...(leavingDate && { leavingDate }), updatedBy: userId },
+            data: { ...data, ...(leavingDate && { leavingDate }), updatedBy: ctx.user.id },
           });
           if (leavingDate) {
             await tx.staffMember.update({
               where: { id: rec.staffMemberId },
-              data: { endDate: leavingDate, updatedBy: userId },
+              data: { endDate: leavingDate, updatedBy: ctx.user.id },
             });
           }
           return updated;
