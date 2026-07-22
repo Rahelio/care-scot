@@ -46,3 +46,6 @@ next-env.d.ts
 
 # Local dev / demo scripts — not for production
 scripts/seed-demo.ts
+
+# local file storage adapter output
+/uploads

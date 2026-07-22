@@ -14,12 +14,15 @@ const usersMgmtProcedure = protectedProcedure.use(
 );
 
 // ─── Org sub-router ──────────────────────────────────────────────────────────
+// Organisation is not in ORG_SCOPED_MODELS (it has no organisationId column —
+// it IS the org), so ctx.db behaves identically to ctx.prisma here. Using
+// ctx.db anyway for consistency; the explicit `id: organisationId` filter
+// stays required since nothing auto-injects it for this model.
 
 const orgRouter = router({
   get: settingsProcedure.query(async ({ ctx }) => {
-    const { organisationId } = ctx.user as { organisationId: string };
-    return ctx.prisma.organisation.findUniqueOrThrow({
-      where: { id: organisationId },
+    return ctx.db.organisation.findUniqueOrThrow({
+      where: { id: ctx.user.organisationId },
     });
   }),
 
@@ -36,9 +39,8 @@ const orgRouter = router({
       }),
     )
     .mutation(async ({ ctx, input }) => {
-      const { organisationId } = ctx.user as { organisationId: string };
-      return ctx.prisma.organisation.update({
-        where: { id: organisationId },
+      return ctx.db.organisation.update({
+        where: { id: ctx.user.organisationId },
         data: {
           name: input.name,
           careInspectorateRegNumber: input.careInspectorateRegNumber || null,
@@ -52,12 +54,10 @@ const orgRouter = router({
     }),
 
   getSystemStats: settingsProcedure.query(async ({ ctx }) => {
-    const { organisationId } = ctx.user as { organisationId: string };
     const [auditLogCount, fileCount, fileSizeAgg] = await Promise.all([
-      ctx.prisma.auditLog.count({ where: { organisationId } }),
-      ctx.prisma.file.count({ where: { organisationId } }),
-      ctx.prisma.file.aggregate({
-        where: { organisationId },
+      ctx.db.auditLog.count(),
+      ctx.db.file.count(),
+      ctx.db.file.aggregate({
         _sum: { fileSizeBytes: true },
       }),
     ]);
@@ -81,20 +81,16 @@ const usersRouter = router({
       }),
     )
     .query(async ({ ctx, input }) => {
-      const { organisationId } = ctx.user as { organisationId: string };
-      const where: Prisma.UserWhereInput = {
-        organisationId,
-        ...(input.search
-          ? {
-              OR: [
-                { email: { contains: input.search, mode: "insensitive" } },
-                { name: { contains: input.search, mode: "insensitive" } },
-              ],
-            }
-          : {}),
-      };
+      const where: Prisma.UserWhereInput = input.search
+        ? {
+            OR: [
+              { email: { contains: input.search, mode: "insensitive" } },
+              { name: { contains: input.search, mode: "insensitive" } },
+            ],
+          }
+        : {};
       const [items, total] = await Promise.all([
-        ctx.prisma.user.findMany({
+        ctx.db.user.findMany({
           where,
           skip: (input.page - 1) * input.limit,
           take: input.limit,
@@ -113,7 +109,7 @@ const usersRouter = router({
             createdAt: true,
           },
         }),
-        ctx.prisma.user.count({ where }),
+        ctx.db.user.count({ where }),
       ]);
       return { items, total, page: input.page, limit: input.limit };
     }),
@@ -129,12 +125,10 @@ const usersRouter = router({
       }),
     )
     .mutation(async ({ ctx, input }) => {
-      const { organisationId } = ctx.user as { organisationId: string };
-
       // Validate staff member belongs to same org
       if (input.staffMemberId) {
-        const staff = await ctx.prisma.staffMember.findFirst({
-          where: { id: input.staffMemberId, organisationId },
+        const staff = await ctx.db.staffMember.findFirst({
+          where: { id: input.staffMemberId },
           select: { id: true },
         });
         if (!staff) {
@@ -148,9 +142,9 @@ const usersRouter = router({
       const passwordHash = await hash(input.tempPassword, 12);
 
       try {
-        const user = await ctx.prisma.user.create({
+        const user = await ctx.db.user.create({
           data: {
-            organisationId,
+            organisationId: ctx.user.organisationId,
             email: input.email,
             name: input.name || null,
             role: input.role,
@@ -190,20 +184,15 @@ const usersRouter = router({
       }),
     )
     .mutation(async ({ ctx, input }) => {
-      const { organisationId, id: currentUserId } = ctx.user as {
-        organisationId: string;
-        id: string;
-      };
-
-      if (input.userId === currentUserId) {
+      if (input.userId === ctx.user.id) {
         throw new TRPCError({
           code: "BAD_REQUEST",
           message: "You cannot change your own role.",
         });
       }
 
-      return ctx.prisma.user.update({
-        where: { id: input.userId, organisationId },
+      return ctx.db.user.update({
+        where: { id: input.userId },
         data: { role: input.role },
         select: { id: true, email: true, role: true },
       });
@@ -212,20 +201,15 @@ const usersRouter = router({
   deactivate: usersMgmtProcedure
     .input(z.object({ userId: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {
-      const { organisationId, id: currentUserId } = ctx.user as {
-        organisationId: string;
-        id: string;
-      };
-
-      if (input.userId === currentUserId) {
+      if (input.userId === ctx.user.id) {
         throw new TRPCError({
           code: "BAD_REQUEST",
           message: "You cannot deactivate your own account.",
         });
       }
 
-      return ctx.prisma.user.update({
-        where: { id: input.userId, organisationId },
+      return ctx.db.user.update({
+        where: { id: input.userId },
         data: { isActive: false },
         select: { id: true, email: true, isActive: true },
       });
@@ -234,10 +218,8 @@ const usersRouter = router({
   reactivate: usersMgmtProcedure
     .input(z.object({ userId: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {
-      const { organisationId } = ctx.user as { organisationId: string };
-
-      return ctx.prisma.user.update({
-        where: { id: input.userId, organisationId },
+      return ctx.db.user.update({
+        where: { id: input.userId },
         data: { isActive: true },
         select: { id: true, email: true, isActive: true },
       });
@@ -251,11 +233,9 @@ const usersRouter = router({
       }),
     )
     .mutation(async ({ ctx, input }) => {
-      const { organisationId } = ctx.user as { organisationId: string };
-
       if (input.staffMemberId) {
-        const staff = await ctx.prisma.staffMember.findFirst({
-          where: { id: input.staffMemberId, organisationId },
+        const staff = await ctx.db.staffMember.findFirst({
+          where: { id: input.staffMemberId },
           select: { id: true },
         });
         if (!staff) {
@@ -266,8 +246,8 @@ const usersRouter = router({
         }
       }
 
-      return ctx.prisma.user.update({
-        where: { id: input.userId, organisationId },
+      return ctx.db.user.update({
+        where: { id: input.userId },
         data: { staffMemberId: input.staffMemberId },
         select: {
           id: true,

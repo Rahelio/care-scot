@@ -62,6 +62,14 @@ const SKIP_FIELDS = new Set([
   "updatedBy",
 ]);
 
+// BigInt columns (e.g. File.fileSizeBytes) come back from Prisma as native
+// JS bigint, which JSON.stringify throws on unconditionally. Stringify it
+// up front so both the equality check below and the eventual JsonB write
+// to AuditLog.changes are safe.
+function normalizeAuditValue(value: unknown): unknown {
+  return typeof value === "bigint" ? value.toString() : value;
+}
+
 function buildChanges(
   operation: string,
   before: PlainRecord | null,
@@ -73,7 +81,7 @@ function buildChanges(
     const diff: PlainRecord = {};
     for (const [k, v] of Object.entries(record)) {
       if (SKIP_FIELDS.has(k) || v === null || v === undefined) continue;
-      diff[k] = { to: v };
+      diff[k] = { to: normalizeAuditValue(v) };
     }
     return Object.keys(diff).length > 0 ? diff : null;
   }
@@ -84,9 +92,10 @@ function buildChanges(
     const diff: PlainRecord = {};
     for (const [k, v] of Object.entries(after)) {
       if (SKIP_FIELDS.has(k)) continue;
-      const fromVal = before[k];
-      if (JSON.stringify(fromVal) !== JSON.stringify(v)) {
-        diff[k] = { from: fromVal ?? null, to: v ?? null };
+      const fromVal = normalizeAuditValue(before[k]);
+      const toVal = normalizeAuditValue(v);
+      if (JSON.stringify(fromVal) !== JSON.stringify(toVal)) {
+        diff[k] = { from: fromVal ?? null, to: toVal ?? null };
       }
     }
     return Object.keys(diff).length > 0 ? diff : null;
@@ -97,7 +106,7 @@ function buildChanges(
     const diff: PlainRecord = {};
     for (const [k, v] of Object.entries(before)) {
       if (SKIP_FIELDS.has(k) || v === null || v === undefined) continue;
-      diff[k] = { from: v };
+      diff[k] = { from: normalizeAuditValue(v) };
     }
     return Object.keys(diff).length > 0 ? diff : null;
   }

@@ -64,11 +64,6 @@ export const filesRouter = router({
       }),
     )
     .mutation(async ({ ctx, input }) => {
-      const { organisationId, id: userId } = ctx.user as {
-        organisationId: string;
-        id: string;
-      };
-
       const buffer = Buffer.from(input.dataBase64, "base64");
       validateFile(input.fileName, input.mimeType, buffer.byteLength);
 
@@ -77,7 +72,7 @@ export const filesRouter = router({
         buffer,
         input.fileName,
         input.mimeType,
-        organisationId,
+        ctx.user.organisationId,
         input.entityType,
       );
 
@@ -86,9 +81,9 @@ export const filesRouter = router({
           ? StorageProvider.S3
           : StorageProvider.LOCAL;
 
-      const file = await ctx.prisma.file.create({
+      const file = await ctx.db.file.create({
         data: {
-          organisationId,
+          organisationId: ctx.user.organisationId,
           fileName: input.fileName,
           fileType: input.mimeType,
           fileSizeBytes: BigInt(buffer.byteLength),
@@ -96,7 +91,7 @@ export const filesRouter = router({
           storageProvider: provider,
           entityType: input.entityType ?? null,
           entityId: input.entityId ?? null,
-          uploadedBy: userId,
+          uploadedBy: ctx.user.id,
         },
       });
 
@@ -113,10 +108,8 @@ export const filesRouter = router({
   download: protectedProcedure
     .input(z.object({ id: z.string().min(1) }))
     .query(async ({ ctx, input }) => {
-      const { organisationId } = ctx.user as { organisationId: string };
-
-      const file = await ctx.prisma.file.findFirst({
-        where: { id: input.id, organisationId, isDeleted: false },
+      const file = await ctx.db.file.findFirst({
+        where: { id: input.id, isDeleted: false },
       });
       if (!file) {
         throw new TRPCError({ code: "NOT_FOUND", message: "File not found." });
@@ -140,16 +133,14 @@ export const filesRouter = router({
   delete: protectedProcedure
     .input(z.object({ id: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {
-      const { organisationId } = ctx.user as { organisationId: string };
-
-      const file = await ctx.prisma.file.findFirst({
-        where: { id: input.id, organisationId, isDeleted: false },
+      const file = await ctx.db.file.findFirst({
+        where: { id: input.id, isDeleted: false },
       });
       if (!file) {
         throw new TRPCError({ code: "NOT_FOUND", message: "File not found." });
       }
 
-      await ctx.prisma.file.update({
+      await ctx.db.file.update({
         where: { id: input.id },
         data: { isDeleted: true },
       });
@@ -168,11 +159,8 @@ export const filesRouter = router({
       }),
     )
     .query(async ({ ctx, input }) => {
-      const { organisationId } = ctx.user as { organisationId: string };
-
-      const files = await ctx.prisma.file.findMany({
+      const files = await ctx.db.file.findMany({
         where: {
-          organisationId,
           entityType: input.entityType,
           entityId: input.entityId,
           isDeleted: false,
