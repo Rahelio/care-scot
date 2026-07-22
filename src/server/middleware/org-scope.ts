@@ -4,11 +4,18 @@ import { prisma } from "@/lib/prisma";
  * Prisma model names (PascalCase) that carry an `organisationId` column.
  * Models without it (Organisation, PolicyAcknowledgment, RotaAvailability,
  * Account, Session, VerificationToken) are passed through untouched.
+ *
+ * Kept in sync against the schema by grepping every model with an
+ * `organisationId` column — do this whenever a new org-scoped model is
+ * added, since a model missing from this set gets zero automatic
+ * scoping via ctx.db even though it looks safe.
  */
 const ORG_SCOPED_MODELS = new Set([
   "ServiceUser",
   "ServiceUserContact",
   "ServiceUserHealthcareProfessional",
+  "ServiceUserStaff",
+  "SharedHealthcareProfessional",
   "PersonalPlan",
   "RiskAssessment",
   "ConsentRecord",
@@ -55,8 +62,9 @@ const ORG_SCOPED_MODELS = new Set([
   "BillableVisit",
   "BankHoliday",
   "Invoice",
-  "InvoiceLine",
   "CreditNote",
+  "VisitSchedule",
+  "Notification",
 ]);
 
 /**
