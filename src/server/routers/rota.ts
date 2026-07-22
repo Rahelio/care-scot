@@ -19,10 +19,8 @@ export const rotaRouter = router({
       })
     )
     .query(async ({ ctx, input }) => {
-      const { organisationId } = ctx.user as { organisationId: string };
-      return ctx.prisma.rotaShift.findMany({
+      return ctx.db.rotaShift.findMany({
         where: {
-          organisationId,
           staffMemberId: input.staffId,
           shiftDate: { gte: input.from, lte: input.to },
         },
@@ -45,10 +43,8 @@ export const rotaRouter = router({
       })
     )
     .query(async ({ ctx, input }) => {
-      const { organisationId } = ctx.user as { organisationId: string };
-      return ctx.prisma.rotaShift.findMany({
+      return ctx.db.rotaShift.findMany({
         where: {
-          organisationId,
           serviceUserId: input.serviceUserId,
           shiftDate: { gte: input.from, lte: input.to },
         },
@@ -70,10 +66,8 @@ export const rotaRouter = router({
       })
     )
     .query(async ({ ctx, input }) => {
-      const { organisationId } = ctx.user as { organisationId: string };
-      return ctx.prisma.rotaShift.findMany({
+      return ctx.db.rotaShift.findMany({
         where: {
-          organisationId,
           shiftDate: { gte: input.from, lte: input.to },
         },
         orderBy: [{ shiftDate: "asc" }, { startTime: "asc" }],
@@ -97,10 +91,8 @@ export const rotaRouter = router({
       })
     )
     .query(async ({ ctx, input }) => {
-      const { organisationId } = ctx.user as { organisationId: string };
-      return ctx.prisma.rotaShift.findMany({
+      return ctx.db.rotaShift.findMany({
         where: {
-          organisationId,
           status: "SCHEDULED",
           shiftDate: { gte: input.from, lte: input.to },
         },
@@ -117,9 +109,8 @@ export const rotaRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const { organisationId } = ctx.user as { organisationId: string };
-      return ctx.prisma.rotaShift.update({
-        where: { id: input.shiftId, organisationId },
+      return ctx.db.rotaShift.update({
+        where: { id: input.shiftId },
         data: { staffMemberId: input.staffId, status: "CONFIRMED" },
       });
     }),
