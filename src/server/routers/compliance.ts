@@ -74,10 +74,8 @@ export const complianceRouter = router({
         })
       )
       .query(async ({ ctx, input }) => {
-        const { organisationId } = ctx.user as { organisationId: string };
         const skip = (input.page - 1) * input.limit;
         const where = {
-          organisationId,
           ...(input.status && { status: input.status }),
           ...(input.category && { policyCategory: input.category }),
           ...(input.search && {
@@ -88,7 +86,7 @@ export const complianceRouter = router({
           }),
         };
         const [items, total] = await Promise.all([
-          ctx.prisma.policy.findMany({
+          ctx.db.policy.findMany({
             where,
             skip,
             take: input.limit,
@@ -97,7 +95,7 @@ export const complianceRouter = router({
               _count: { select: { acknowledgments: true } },
             },
           }),
-          ctx.prisma.policy.count({ where }),
+          ctx.db.policy.count({ where }),
         ]);
         return { items, total, page: input.page, limit: input.limit };
       }),
@@ -105,9 +103,8 @@ export const complianceRouter = router({
     getById: protectedProcedure
       .input(z.object({ id: z.string().min(1) }))
       .query(async ({ ctx, input }) => {
-        const { organisationId } = ctx.user as { organisationId: string };
-        const policy = await ctx.prisma.policy.findUnique({
-          where: { id: input.id, organisationId },
+        const policy = await ctx.db.policy.findUnique({
+          where: { id: input.id },
           include: {
             approvedByUser: { select: { id: true, email: true } },
             acknowledgments: {
@@ -133,12 +130,8 @@ export const complianceRouter = router({
         })
       )
       .mutation(async ({ ctx, input }) => {
-        const { organisationId, id: userId } = ctx.user as {
-          organisationId: string;
-          id: string;
-        };
         const { effectiveDate, reviewDate, nextReviewDate, ...rest } = input;
-        return ctx.prisma.policy.create({
+        return ctx.db.policy.create({
           data: {
             ...rest,
             effectiveDate: effectiveDate ? new Date(effectiveDate) : undefined,
@@ -146,10 +139,10 @@ export const complianceRouter = router({
             nextReviewDate: nextReviewDate
               ? new Date(nextReviewDate)
               : undefined,
-            organisationId,
+            organisationId: ctx.user.organisationId,
             version: 1,
-            createdBy: userId,
-            updatedBy: userId,
+            createdBy: ctx.user.id,
+            updatedBy: ctx.user.id,
           },
         });
       }),
@@ -172,24 +165,20 @@ export const complianceRouter = router({
         })
       )
       .mutation(async ({ ctx, input }) => {
-        const { organisationId, id: userId } = ctx.user as {
-          organisationId: string;
-          id: string;
-        };
         const { id, newVersion, effectiveDate, reviewDate, nextReviewDate, ...data } =
           input;
 
         if (newVersion) {
           // Archive the old version
-          const existing = await ctx.prisma.policy.findUniqueOrThrow({
-            where: { id, organisationId },
-          });
-          await ctx.prisma.policy.update({
+          const existing = await ctx.db.policy.findUniqueOrThrow({
             where: { id },
-            data: { status: "ARCHIVED", updatedBy: userId },
+          });
+          await ctx.db.policy.update({
+            where: { id },
+            data: { status: "ARCHIVED", updatedBy: ctx.user.id },
           });
           // Create new version
-          return ctx.prisma.policy.create({
+          return ctx.db.policy.create({
             data: {
               policyName: data.policyName ?? existing.policyName,
               policyCategory:
@@ -203,15 +192,15 @@ export const complianceRouter = router({
                 ? new Date(nextReviewDate)
                 : undefined,
               version: existing.version + 1,
-              organisationId,
-              createdBy: userId,
-              updatedBy: userId,
+              organisationId: ctx.user.organisationId,
+              createdBy: ctx.user.id,
+              updatedBy: ctx.user.id,
             },
           });
         }
 
-        return ctx.prisma.policy.update({
-          where: { id, organisationId },
+        return ctx.db.policy.update({
+          where: { id },
           data: {
             ...data,
             effectiveDate: effectiveDate
@@ -222,10 +211,10 @@ export const complianceRouter = router({
               ? new Date(nextReviewDate)
               : undefined,
             approvedBy:
-              data.status === "ACTIVE" ? userId : undefined,
+              data.status === "ACTIVE" ? ctx.user.id : undefined,
             approvedDate:
               data.status === "ACTIVE" ? new Date() : undefined,
-            updatedBy: userId,
+            updatedBy: ctx.user.id,
           },
         });
       }),
@@ -234,29 +223,27 @@ export const complianceRouter = router({
     acknowledge: protectedProcedure
       .input(z.object({ policyId: z.string().min(1) }))
       .mutation(async ({ ctx, input }) => {
-        const { staffMemberId } = ctx.user as {
-          staffMemberId: string | null;
-        };
-        if (!staffMemberId) {
+        if (!ctx.user.staffMemberId) {
           throw new TRPCError({
             code: "FORBIDDEN",
             message: "No staff member profile linked to your account.",
           });
         }
+        const staffMemberId = ctx.user.staffMemberId;
 
         // Upsert acknowledgment
-        const existing = await ctx.prisma.policyAcknowledgment.findFirst({
+        const existing = await ctx.db.policyAcknowledgment.findFirst({
           where: { policyId: input.policyId, staffMemberId },
         });
 
         if (existing) {
-          return ctx.prisma.policyAcknowledgment.update({
+          return ctx.db.policyAcknowledgment.update({
             where: { id: existing.id },
             data: { acknowledged: true, acknowledgedDate: new Date() },
           });
         }
 
-        return ctx.prisma.policyAcknowledgment.create({
+        return ctx.db.policyAcknowledgment.create({
           data: {
             policyId: input.policyId,
             staffMemberId,
@@ -270,13 +257,11 @@ export const complianceRouter = router({
     getAcknowledgmentStatus: protectedProcedure
       .input(z.object({ policyId: z.string().min(1) }))
       .query(async ({ ctx, input }) => {
-        const { organisationId } = ctx.user as { organisationId: string };
-
         const [totalStaff, acknowledgments] = await Promise.all([
-          ctx.prisma.staffMember.count({
-            where: { organisationId, status: "ACTIVE" },
+          ctx.db.staffMember.count({
+            where: { status: "ACTIVE" },
           }),
-          ctx.prisma.policyAcknowledgment.findMany({
+          ctx.db.policyAcknowledgment.findMany({
             where: { policyId: input.policyId, acknowledged: true },
             select: {
               staffMemberId: true,
@@ -307,15 +292,13 @@ export const complianceRouter = router({
         })
       )
       .query(async ({ ctx, input }) => {
-        const { organisationId } = ctx.user as { organisationId: string };
         const skip = (input.page - 1) * input.limit;
         const where = {
-          organisationId,
           ...(input.status && { status: input.status }),
         };
 
         const [items, total] = await Promise.all([
-          ctx.prisma.complaint.findMany({
+          ctx.db.complaint.findMany({
             where,
             skip,
             take: input.limit,
@@ -327,7 +310,7 @@ export const complianceRouter = router({
               investigatedByUser: { select: { id: true, email: true } },
             },
           }),
-          ctx.prisma.complaint.count({ where }),
+          ctx.db.complaint.count({ where }),
         ]);
 
         // Enrich with SLA info
@@ -349,9 +332,8 @@ export const complianceRouter = router({
     getById: protectedProcedure
       .input(z.object({ id: z.string().min(1) }))
       .query(async ({ ctx, input }) => {
-        const { organisationId } = ctx.user as { organisationId: string };
-        const complaint = await ctx.prisma.complaint.findUnique({
-          where: { id: input.id, organisationId },
+        const complaint = await ctx.db.complaint.findUnique({
+          where: { id: input.id },
           include: {
             serviceUser: {
               select: { id: true, firstName: true, lastName: true },
@@ -380,18 +362,14 @@ export const complianceRouter = router({
         })
       )
       .mutation(async ({ ctx, input }) => {
-        const { organisationId, id: userId } = ctx.user as {
-          organisationId: string;
-          id: string;
-        };
         const { dateReceived, ...rest } = input;
-        return ctx.prisma.complaint.create({
+        return ctx.db.complaint.create({
           data: {
             ...rest,
             dateReceived: new Date(dateReceived),
-            organisationId,
-            createdBy: userId,
-            updatedBy: userId,
+            organisationId: ctx.user.organisationId,
+            createdBy: ctx.user.id,
+            updatedBy: ctx.user.id,
           },
         });
       }),
@@ -413,10 +391,6 @@ export const complianceRouter = router({
         })
       )
       .mutation(async ({ ctx, input }) => {
-        const { organisationId, id: userId } = ctx.user as {
-          organisationId: string;
-          id: string;
-        };
         const {
           id,
           responseSentDate,
@@ -427,19 +401,19 @@ export const complianceRouter = router({
 
         const updateData: Record<string, unknown> = {
           ...data,
-          updatedBy: userId,
+          updatedBy: ctx.user.id,
         };
         if (responseSentDate)
           updateData.responseSentDate = new Date(responseSentDate);
         if (referralDate) updateData.referralDate = new Date(referralDate);
         if (actionsTaken) updateData.actionsTaken = actionsTaken;
         if (data.status === "INVESTIGATING")
-          updateData.investigatedBy = userId;
+          updateData.investigatedBy = ctx.user.id;
         if (data.status === "RESOLVED")
           updateData.closedDate = new Date();
 
-        return ctx.prisma.complaint.update({
-          where: { id, organisationId },
+        return ctx.db.complaint.update({
+          where: { id },
           data: updateData,
         });
       }),
@@ -458,11 +432,9 @@ export const complianceRouter = router({
         })
       )
       .query(async ({ ctx, input }) => {
-        const { organisationId } = ctx.user as { organisationId: string };
         const skip = (input.page - 1) * input.limit;
         const [items, total] = await Promise.all([
-          ctx.prisma.compliment.findMany({
-            where: { organisationId },
+          ctx.db.compliment.findMany({
             skip,
             take: input.limit,
             orderBy: { dateReceived: "desc" },
@@ -472,7 +444,7 @@ export const complianceRouter = router({
               },
             },
           }),
-          ctx.prisma.compliment.count({ where: { organisationId } }),
+          ctx.db.compliment.count(),
         ]);
         return { items, total, page: input.page, limit: input.limit };
       }),
@@ -488,18 +460,14 @@ export const complianceRouter = router({
         })
       )
       .mutation(async ({ ctx, input }) => {
-        const { organisationId, id: userId } = ctx.user as {
-          organisationId: string;
-          id: string;
-        };
         const { dateReceived, ...rest } = input;
-        return ctx.prisma.compliment.create({
+        return ctx.db.compliment.create({
           data: {
             ...rest,
             dateReceived: new Date(dateReceived),
-            organisationId,
-            createdBy: userId,
-            updatedBy: userId,
+            organisationId: ctx.user.organisationId,
+            createdBy: ctx.user.id,
+            updatedBy: ctx.user.id,
           },
         });
       }),
@@ -520,15 +488,13 @@ export const complianceRouter = router({
         })
       )
       .query(async ({ ctx, input }) => {
-        const { organisationId } = ctx.user as { organisationId: string };
         const skip = (input.page - 1) * input.limit;
         const where = {
-          organisationId,
           ...(input.auditType && { auditType: input.auditType }),
           ...(input.status && { status: input.status }),
         };
         const [items, total] = await Promise.all([
-          ctx.prisma.qualityAudit.findMany({
+          ctx.db.qualityAudit.findMany({
             where,
             skip,
             take: input.limit,
@@ -537,7 +503,7 @@ export const complianceRouter = router({
               auditor: { select: { id: true, email: true } },
             },
           }),
-          ctx.prisma.qualityAudit.count({ where }),
+          ctx.db.qualityAudit.count({ where }),
         ]);
         return { items, total, page: input.page, limit: input.limit };
       }),
@@ -545,9 +511,8 @@ export const complianceRouter = router({
     getById: manageProcedure
       .input(z.object({ id: z.string().min(1) }))
       .query(async ({ ctx, input }) => {
-        const { organisationId } = ctx.user as { organisationId: string };
-        const audit = await ctx.prisma.qualityAudit.findUnique({
-          where: { id: input.id, organisationId },
+        const audit = await ctx.db.qualityAudit.findUnique({
+          where: { id: input.id },
           include: {
             auditor: { select: { id: true, email: true } },
           },
@@ -570,24 +535,20 @@ export const complianceRouter = router({
         })
       )
       .mutation(async ({ ctx, input }) => {
-        const { organisationId, id: userId } = ctx.user as {
-          organisationId: string;
-          id: string;
-        };
         const { auditDate, followUpDate, findings, actionPlan, ...rest } =
           input;
-        return ctx.prisma.qualityAudit.create({
+        return ctx.db.qualityAudit.create({
           data: {
             ...rest,
             auditDate: new Date(auditDate),
             followUpDate: followUpDate ? new Date(followUpDate) : undefined,
             findings: findings ?? undefined,
             actionPlan: actionPlan ?? undefined,
-            organisationId,
-            auditorId: userId,
+            organisationId: ctx.user.organisationId,
+            auditorId: ctx.user.id,
             status: rest.status ?? "OPEN",
-            createdBy: userId,
-            updatedBy: userId,
+            createdBy: ctx.user.id,
+            updatedBy: ctx.user.id,
           },
         });
       }),
@@ -605,19 +566,15 @@ export const complianceRouter = router({
         })
       )
       .mutation(async ({ ctx, input }) => {
-        const { organisationId, id: userId } = ctx.user as {
-          organisationId: string;
-          id: string;
-        };
         const { id, followUpDate, findings, actionPlan, ...data } = input;
-        return ctx.prisma.qualityAudit.update({
-          where: { id, organisationId },
+        return ctx.db.qualityAudit.update({
+          where: { id },
           data: {
             ...data,
             followUpDate: followUpDate ? new Date(followUpDate) : undefined,
             findings: findings ?? undefined,
             actionPlan: actionPlan ?? undefined,
-            updatedBy: userId,
+            updatedBy: ctx.user.id,
           },
         });
       }),
@@ -637,14 +594,12 @@ export const complianceRouter = router({
         })
       )
       .query(async ({ ctx, input }) => {
-        const { organisationId } = ctx.user as { organisationId: string };
         const skip = (input.page - 1) * input.limit;
         const where = {
-          organisationId,
           ...(input.surveyType && { surveyType: input.surveyType }),
         };
         const [items, total] = await Promise.all([
-          ctx.prisma.satisfactionSurvey.findMany({
+          ctx.db.satisfactionSurvey.findMany({
             where,
             skip,
             take: input.limit,
@@ -655,7 +610,7 @@ export const complianceRouter = router({
               },
             },
           }),
-          ctx.prisma.satisfactionSurvey.count({ where }),
+          ctx.db.satisfactionSurvey.count({ where }),
         ]);
         return { items, total, page: input.page, limit: input.limit };
       }),
@@ -672,29 +627,23 @@ export const complianceRouter = router({
         })
       )
       .mutation(async ({ ctx, input }) => {
-        const { organisationId, id: userId } = ctx.user as {
-          organisationId: string;
-          id: string;
-        };
         const { surveyDate, overallRating, ...rest } = input;
-        return ctx.prisma.satisfactionSurvey.create({
+        return ctx.db.satisfactionSurvey.create({
           data: {
             ...rest,
             surveyDate: new Date(surveyDate),
             overallRating: overallRating
               ? parseInt(overallRating, 10)
               : undefined,
-            organisationId,
-            createdBy: userId,
-            updatedBy: userId,
+            organisationId: ctx.user.organisationId,
+            createdBy: ctx.user.id,
+            updatedBy: ctx.user.id,
           },
         });
       }),
 
     getSummary: protectedProcedure.query(async ({ ctx }) => {
-      const { organisationId } = ctx.user as { organisationId: string };
-      const surveys = await ctx.prisma.satisfactionSurvey.findMany({
-        where: { organisationId },
+      const surveys = await ctx.db.satisfactionSurvey.findMany({
         select: { surveyType: true, overallRating: true },
       });
 
@@ -731,9 +680,7 @@ export const complianceRouter = router({
 
   inspections: router({
     list: protectedProcedure.query(async ({ ctx }) => {
-      const { organisationId } = ctx.user as { organisationId: string };
-      return ctx.prisma.careInspectorateInspection.findMany({
-        where: { organisationId },
+      return ctx.db.careInspectorateInspection.findMany({
         orderBy: { inspectionDate: "desc" },
         include: {
           actionPlan: { select: { id: true, status: true } },
@@ -744,10 +691,9 @@ export const complianceRouter = router({
     getById: protectedProcedure
       .input(z.object({ id: z.string().min(1) }))
       .query(async ({ ctx, input }) => {
-        const { organisationId } = ctx.user as { organisationId: string };
         const inspection =
-          await ctx.prisma.careInspectorateInspection.findUnique({
-            where: { id: input.id, organisationId },
+          await ctx.db.careInspectorateInspection.findUnique({
+            where: { id: input.id },
             include: {
               actionPlan: {
                 include: {
@@ -774,22 +720,18 @@ export const complianceRouter = router({
         })
       )
       .mutation(async ({ ctx, input }) => {
-        const { organisationId, id: userId } = ctx.user as {
-          organisationId: string;
-          id: string;
-        };
         const { inspectionDate, grades, requirements, recommendations, ...rest } =
           input;
-        return ctx.prisma.careInspectorateInspection.create({
+        return ctx.db.careInspectorateInspection.create({
           data: {
             ...rest,
             inspectionDate: new Date(inspectionDate),
             grades: grades ?? undefined,
             requirements: requirements ?? undefined,
             recommendations: recommendations ?? undefined,
-            organisationId,
-            createdBy: userId,
-            updatedBy: userId,
+            organisationId: ctx.user.organisationId,
+            createdBy: ctx.user.id,
+            updatedBy: ctx.user.id,
           },
         });
       }),
@@ -807,19 +749,15 @@ export const complianceRouter = router({
         })
       )
       .mutation(async ({ ctx, input }) => {
-        const { organisationId, id: userId } = ctx.user as {
-          organisationId: string;
-          id: string;
-        };
         const { id, grades, requirements, recommendations, ...data } = input;
-        return ctx.prisma.careInspectorateInspection.update({
-          where: { id, organisationId },
+        return ctx.db.careInspectorateInspection.update({
+          where: { id },
           data: {
             ...data,
             grades: grades ?? undefined,
             requirements: requirements ?? undefined,
             recommendations: recommendations ?? undefined,
-            updatedBy: userId,
+            updatedBy: ctx.user.id,
           },
         });
       }),
@@ -831,9 +769,7 @@ export const complianceRouter = router({
 
   annualReturns: router({
     list: manageProcedure.query(async ({ ctx }) => {
-      const { organisationId } = ctx.user as { organisationId: string };
-      return ctx.prisma.annualReturn.findMany({
-        where: { organisationId },
+      return ctx.db.annualReturn.findMany({
         orderBy: { year: "desc" },
       });
     }),
@@ -851,19 +787,15 @@ export const complianceRouter = router({
         })
       )
       .mutation(async ({ ctx, input }) => {
-        const { organisationId, id: userId } = ctx.user as {
-          organisationId: string;
-          id: string;
-        };
         const { deadlineDate, ...rest } = input;
-        return ctx.prisma.annualReturn.create({
+        return ctx.db.annualReturn.create({
           data: {
             ...rest,
             deadlineDate: deadlineDate ? new Date(deadlineDate) : undefined,
-            organisationId,
+            organisationId: ctx.user.organisationId,
             status: "DRAFT",
-            createdBy: userId,
-            updatedBy: userId,
+            createdBy: ctx.user.id,
+            updatedBy: ctx.user.id,
           },
         });
       }),
@@ -884,19 +816,15 @@ export const complianceRouter = router({
         })
       )
       .mutation(async ({ ctx, input }) => {
-        const { organisationId, id: userId } = ctx.user as {
-          organisationId: string;
-          id: string;
-        };
         const { id, submissionDate, ...data } = input;
-        return ctx.prisma.annualReturn.update({
-          where: { id, organisationId },
+        return ctx.db.annualReturn.update({
+          where: { id },
           data: {
             ...data,
             submissionDate: submissionDate
               ? new Date(submissionDate)
               : undefined,
-            updatedBy: userId,
+            updatedBy: ctx.user.id,
           },
         });
       }),
@@ -908,21 +836,19 @@ export const complianceRouter = router({
     autoPopulate: manageProcedure
       .input(z.object({ year: z.number().int() }))
       .query(async ({ ctx, input }) => {
-        const { organisationId } = ctx.user as { organisationId: string };
         const yearStart = new Date(input.year, 0, 1);
         const yearEnd = new Date(input.year, 11, 31);
 
         const [serviceUserCount, staffCount, complaints, incidents] =
           await Promise.all([
-            ctx.prisma.serviceUser.count({
-              where: { organisationId, status: "ACTIVE" },
+            ctx.db.serviceUser.count({
+              where: { status: "ACTIVE" },
             }),
-            ctx.prisma.staffMember.count({
-              where: { organisationId, status: "ACTIVE" },
+            ctx.db.staffMember.count({
+              where: { status: "ACTIVE" },
             }),
-            ctx.prisma.complaint.findMany({
+            ctx.db.complaint.findMany({
               where: {
-                organisationId,
                 dateReceived: { gte: yearStart, lte: yearEnd },
               },
               select: {
@@ -930,9 +856,8 @@ export const complianceRouter = router({
                 natureOfComplaint: true,
               },
             }),
-            ctx.prisma.incident.findMany({
+            ctx.db.incident.findMany({
               where: {
-                organisationId,
                 incidentDate: { gte: yearStart, lte: yearEnd },
               },
               select: {
@@ -962,7 +887,6 @@ export const complianceRouter = router({
 
   dashboard: router({
     getOverview: manageProcedure.query(async ({ ctx }) => {
-      const { organisationId } = ctx.user as { organisationId: string };
       const now = new Date();
       const days28Ago = new Date(now.getTime() - 28 * 86_400_000);
       const days90Future = new Date(now.getTime() + 90 * 86_400_000);
@@ -972,8 +896,8 @@ export const complianceRouter = router({
       months12Ago.setMonth(months12Ago.getMonth() - 12);
 
       // ── Personal Plans ──
-      const activeServiceUsers = await ctx.prisma.serviceUser.findMany({
-        where: { organisationId, status: "ACTIVE" },
+      const activeServiceUsers = await ctx.db.serviceUser.findMany({
+        where: { status: "ACTIVE" },
         select: { id: true },
       });
       const suIds = activeServiceUsers.map((su) => su.id);
@@ -981,9 +905,8 @@ export const complianceRouter = router({
 
       // Find service users that have at least one ACTIVE personal plan
       const withPlanSUs = totalSU > 0
-        ? await ctx.prisma.personalPlan.findMany({
+        ? await ctx.db.personalPlan.findMany({
             where: {
-              organisationId,
               serviceUserId: { in: suIds },
               status: "ACTIVE",
             },
@@ -996,9 +919,8 @@ export const complianceRouter = router({
 
       // Overdue plans: ACTIVE plans where nextReviewDate < 28 days ago
       const overduePlans = totalSU > 0
-        ? await ctx.prisma.personalPlan.count({
+        ? await ctx.db.personalPlan.count({
             where: {
-              organisationId,
               status: "ACTIVE",
               nextReviewDate: { lt: days28Ago },
             },
@@ -1007,9 +929,8 @@ export const complianceRouter = router({
 
       // Due for review: ACTIVE plans where nextReviewDate <= now
       const dueForReview = totalSU > 0
-        ? await ctx.prisma.personalPlan.count({
+        ? await ctx.db.personalPlan.count({
             where: {
-              organisationId,
               status: "ACTIVE",
               nextReviewDate: { lte: now, gte: days28Ago },
             },
@@ -1017,8 +938,8 @@ export const complianceRouter = router({
         : 0;
 
       // ── Staff Compliance ──
-      const activeStaff = await ctx.prisma.staffMember.findMany({
-        where: { organisationId, status: "ACTIVE" },
+      const activeStaff = await ctx.db.staffMember.findMany({
+        where: { status: "ACTIVE" },
         select: { id: true },
       });
       const staffIds = activeStaff.map((s) => s.id);
@@ -1026,9 +947,8 @@ export const complianceRouter = router({
 
       // PVG expiring in 90 days
       const pvgExpiring = totalStaff > 0
-        ? await ctx.prisma.staffPvgRecord.count({
+        ? await ctx.db.staffPvgRecord.count({
             where: {
-              organisationId,
               staffMemberId: { in: staffIds },
               renewalDate: { lte: days90Future, gte: now },
             },
@@ -1037,9 +957,8 @@ export const complianceRouter = router({
 
       // SSSC expiring in 90 days
       const ssscExpiring = totalStaff > 0
-        ? await ctx.prisma.staffRegistration.count({
+        ? await ctx.db.staffRegistration.count({
             where: {
-              organisationId,
               staffMemberId: { in: staffIds },
               registrationType: "SSSC",
               expiryDate: { lte: days90Future, gte: now },
@@ -1049,9 +968,8 @@ export const complianceRouter = router({
 
       // Staff missing mandatory training (active staff with no mandatory training records)
       const staffWithMandatory = totalStaff > 0
-        ? await ctx.prisma.staffTrainingRecord.findMany({
+        ? await ctx.db.staffTrainingRecord.findMany({
             where: {
-              organisationId,
               staffMemberId: { in: staffIds },
               isMandatory: true,
             },
@@ -1063,9 +981,8 @@ export const complianceRouter = router({
 
       // Expiring training (mandatory, expiring in 90 days)
       const expiringTraining = totalStaff > 0
-        ? await ctx.prisma.staffTrainingRecord.count({
+        ? await ctx.db.staffTrainingRecord.count({
             where: {
-              organisationId,
               staffMemberId: { in: staffIds },
               isMandatory: true,
               expiryDate: { lte: days90Future, gte: now },
@@ -1075,9 +992,8 @@ export const complianceRouter = router({
 
       // Overdue supervisions (>3 months since last)
       const recentSupervisions = totalStaff > 0
-        ? await ctx.prisma.staffSupervision.findMany({
+        ? await ctx.db.staffSupervision.findMany({
             where: {
-              organisationId,
               staffMemberId: { in: staffIds },
               supervisionDate: { gte: months3Ago },
             },
@@ -1089,9 +1005,8 @@ export const complianceRouter = router({
 
       // Overdue appraisals (>12 months since last)
       const recentAppraisals = totalStaff > 0
-        ? await ctx.prisma.staffAppraisal.findMany({
+        ? await ctx.db.staffAppraisal.findMany({
             where: {
-              organisationId,
               staffMemberId: { in: staffIds },
               appraisalDate: { gte: months12Ago },
             },
@@ -1108,27 +1023,26 @@ export const complianceRouter = router({
         pendingCINotifications,
         openSafeguarding,
       ] = await Promise.all([
-        ctx.prisma.incident.count({
-          where: { organisationId, status: { not: "CLOSED" } },
+        ctx.db.incident.count({
+          where: { status: { not: "CLOSED" } },
         }),
-        ctx.prisma.incident.count({
+        ctx.db.incident.count({
           where: {
-            organisationId,
             status: { not: "CLOSED" },
             severity: { in: ["HIGH", "CRITICAL"] },
           },
         }),
-        ctx.prisma.careInspectorateNotification.count({
-          where: { organisationId, submittedDate: null },
+        ctx.db.careInspectorateNotification.count({
+          where: { submittedDate: null },
         }),
-        ctx.prisma.safeguardingConcern.count({
-          where: { organisationId, status: { not: "CLOSED" } },
+        ctx.db.safeguardingConcern.count({
+          where: { status: { not: "CLOSED" } },
         }),
       ]);
 
       // ── Complaints ──
-      const openComplaints = await ctx.prisma.complaint.findMany({
-        where: { organisationId, status: { not: "RESOLVED" } },
+      const openComplaints = await ctx.db.complaint.findMany({
+        where: { status: { not: "RESOLVED" } },
         select: { dateReceived: true },
       });
       const overdueComplaints = openComplaints.filter((c) => {
@@ -1137,16 +1051,15 @@ export const complianceRouter = router({
       }).length;
 
       // ── Policies ──
-      const overdueReviews = await ctx.prisma.policy.count({
+      const overdueReviews = await ctx.db.policy.count({
         where: {
-          organisationId,
           status: "ACTIVE",
           nextReviewDate: { lt: now },
         },
       });
 
-      const activePolicies = await ctx.prisma.policy.findMany({
-        where: { organisationId, status: "ACTIVE" },
+      const activePolicies = await ctx.db.policy.findMany({
+        where: { status: "ACTIVE" },
         select: { id: true },
       });
       const policyIds = activePolicies.map((p) => p.id);
@@ -1154,7 +1067,7 @@ export const complianceRouter = router({
       // Total expected acknowledgments vs actual
       const totalExpectedAcks = policyIds.length * totalStaff;
       const actualAcks = policyIds.length > 0
-        ? await ctx.prisma.policyAcknowledgment.count({
+        ? await ctx.db.policyAcknowledgment.count({
             where: {
               policyId: { in: policyIds },
               acknowledged: true,
@@ -1164,8 +1077,8 @@ export const complianceRouter = router({
       const pendingAcknowledgments = totalExpectedAcks - actualAcks;
 
       // ── Audits ──
-      const openAudits = await ctx.prisma.qualityAudit.findMany({
-        where: { organisationId, status: { not: "CLOSED" } },
+      const openAudits = await ctx.db.qualityAudit.findMany({
+        where: { status: { not: "CLOSED" } },
         select: { auditType: true, actionPlan: true },
       });
       type AuditActionItem = { status: string };
@@ -1176,9 +1089,8 @@ export const complianceRouter = router({
       }
 
       // ── Equipment ──
-      const overdueEquipment = await ctx.prisma.equipmentCheck.count({
+      const overdueEquipment = await ctx.db.equipmentCheck.count({
         where: {
-          organisationId,
           nextCheckDate: { lt: now },
         },
       });
@@ -1186,9 +1098,8 @@ export const complianceRouter = router({
       // ── Reviews ──
       // Service users without a review in the last 12 months
       const recentReviews = totalSU > 0
-        ? await ctx.prisma.serviceUserReview.findMany({
+        ? await ctx.db.serviceUserReview.findMany({
             where: {
-              organisationId,
               serviceUserId: { in: suIds },
               reviewDate: { gte: months12Ago },
             },
@@ -1245,7 +1156,6 @@ export const complianceRouter = router({
     }),
 
     getInspectionReadinessScore: manageProcedure.query(async ({ ctx }) => {
-      const { organisationId } = ctx.user as { organisationId: string };
       const now = new Date();
       const days90Future = new Date(now.getTime() + 90 * 86_400_000);
       const months3Ago = new Date(now);
@@ -1257,17 +1167,16 @@ export const complianceRouter = router({
       const clamp = (v: number) => Math.max(0, Math.min(100, v));
 
       // ── Personal Plans (20%) ──
-      const activeServiceUsers = await ctx.prisma.serviceUser.findMany({
-        where: { organisationId, status: "ACTIVE" },
+      const activeServiceUsers = await ctx.db.serviceUser.findMany({
+        where: { status: "ACTIVE" },
         select: { id: true },
       });
       const suIds = activeServiceUsers.map((su) => su.id);
       const totalSU = suIds.length;
 
       const withPlanSUs = totalSU > 0
-        ? await ctx.prisma.personalPlan.findMany({
+        ? await ctx.db.personalPlan.findMany({
             where: {
-              organisationId,
               serviceUserId: { in: suIds },
               status: "ACTIVE",
             },
@@ -1282,8 +1191,8 @@ export const complianceRouter = router({
         totalSU > 0 ? clamp((plansUpToDate / totalSU) * 100) : 100;
 
       // ── Staff Compliance (25%) ──
-      const activeStaff = await ctx.prisma.staffMember.findMany({
-        where: { organisationId, status: "ACTIVE" },
+      const activeStaff = await ctx.db.staffMember.findMany({
+        where: { status: "ACTIVE" },
         select: { id: true },
       });
       const staffIds = activeStaff.map((s) => s.id);
@@ -1294,10 +1203,10 @@ export const complianceRouter = router({
         const staffScore = 100;
         // Skip detailed calculations, return simplified
         const [openIncidents, totalIncidents] = await Promise.all([
-          ctx.prisma.incident.count({
-            where: { organisationId, status: { not: "CLOSED" } },
+          ctx.db.incident.count({
+            where: { status: { not: "CLOSED" } },
           }),
-          ctx.prisma.incident.count({ where: { organisationId } }),
+          ctx.db.incident.count(),
         ]);
         const incidentsScore =
           totalIncidents > 0
@@ -1333,9 +1242,8 @@ export const complianceRouter = router({
       }
 
       // PVG: % of staff with valid (non-expiring-soon) PVG
-      const validPvg = await ctx.prisma.staffPvgRecord.findMany({
+      const validPvg = await ctx.db.staffPvgRecord.findMany({
         where: {
-          organisationId,
           staffMemberId: { in: staffIds },
           OR: [
             { renewalDate: null },
@@ -1347,9 +1255,8 @@ export const complianceRouter = router({
       });
 
       // SSSC: % of staff with valid registration
-      const validSssc = await ctx.prisma.staffRegistration.findMany({
+      const validSssc = await ctx.db.staffRegistration.findMany({
         where: {
-          organisationId,
           staffMemberId: { in: staffIds },
           registrationType: "SSSC",
           OR: [
@@ -1362,9 +1269,8 @@ export const complianceRouter = router({
       });
 
       // Mandatory training: % with at least one current mandatory training
-      const validMandatory = await ctx.prisma.staffTrainingRecord.findMany({
+      const validMandatory = await ctx.db.staffTrainingRecord.findMany({
         where: {
-          organisationId,
           staffMemberId: { in: staffIds },
           isMandatory: true,
           OR: [
@@ -1377,9 +1283,8 @@ export const complianceRouter = router({
       });
 
       // Supervisions: % with supervision in last 3 months
-      const recentSups = await ctx.prisma.staffSupervision.findMany({
+      const recentSups = await ctx.db.staffSupervision.findMany({
         where: {
-          organisationId,
           staffMemberId: { in: staffIds },
           supervisionDate: { gte: months3Ago },
         },
@@ -1388,9 +1293,8 @@ export const complianceRouter = router({
       });
 
       // Appraisals: % with appraisal in last 12 months
-      const recentApps = await ctx.prisma.staffAppraisal.findMany({
+      const recentApps = await ctx.db.staffAppraisal.findMany({
         where: {
-          organisationId,
           staffMemberId: { in: staffIds },
           appraisalDate: { gte: months12Ago },
         },
@@ -1410,10 +1314,10 @@ export const complianceRouter = router({
 
       // ── Incidents (15%) ──
       const [openIncidents, totalIncidents] = await Promise.all([
-        ctx.prisma.incident.count({
-          where: { organisationId, status: { not: "CLOSED" } },
+        ctx.db.incident.count({
+          where: { status: { not: "CLOSED" } },
         }),
-        ctx.prisma.incident.count({ where: { organisationId } }),
+        ctx.db.incident.count(),
       ]);
       const incidentsScore =
         totalIncidents > 0
@@ -1423,13 +1327,11 @@ export const complianceRouter = router({
           : 100;
 
       // ── Complaints SLA (10%) ──
-      const openComplaints = await ctx.prisma.complaint.findMany({
-        where: { organisationId, status: { not: "RESOLVED" } },
+      const openComplaints = await ctx.db.complaint.findMany({
+        where: { status: { not: "RESOLVED" } },
         select: { dateReceived: true },
       });
-      const totalComplaints = await ctx.prisma.complaint.count({
-        where: { organisationId },
-      });
+      const totalComplaints = await ctx.db.complaint.count();
       const overdueComplaints = openComplaints.filter((c) => {
         const deadline = addWorkingDays(new Date(c.dateReceived), 20);
         return now > deadline;
@@ -1443,12 +1345,11 @@ export const complianceRouter = router({
 
       // ── Policies (10%) ──
       const [activePolicies, overdueReviewCount] = await Promise.all([
-        ctx.prisma.policy.count({
-          where: { organisationId, status: "ACTIVE" },
+        ctx.db.policy.count({
+          where: { status: "ACTIVE" },
         }),
-        ctx.prisma.policy.count({
+        ctx.db.policy.count({
           where: {
-            organisationId,
             status: "ACTIVE",
             nextReviewDate: { lt: now },
           },
@@ -1462,8 +1363,7 @@ export const complianceRouter = router({
           : 100;
 
       // ── Audits (10%) ──
-      const allAudits = await ctx.prisma.qualityAudit.findMany({
-        where: { organisationId },
+      const allAudits = await ctx.db.qualityAudit.findMany({
         select: { status: true, actionPlan: true },
       });
       type AuditActionItem2 = { status: string };
@@ -1483,9 +1383,9 @@ export const complianceRouter = router({
 
       // ── Equipment (5%) ──
       const [totalEquipment, overdueEquipment] = await Promise.all([
-        ctx.prisma.equipmentCheck.count({ where: { organisationId } }),
-        ctx.prisma.equipmentCheck.count({
-          where: { organisationId, nextCheckDate: { lt: now } },
+        ctx.db.equipmentCheck.count(),
+        ctx.db.equipmentCheck.count({
+          where: { nextCheckDate: { lt: now } },
         }),
       ]);
       const equipmentScore =
@@ -1497,9 +1397,8 @@ export const complianceRouter = router({
 
       // ── Reviews (5%) ──
       const recentReviews = totalSU > 0
-        ? await ctx.prisma.serviceUserReview.findMany({
+        ? await ctx.db.serviceUserReview.findMany({
             where: {
-              organisationId,
               serviceUserId: { in: suIds },
               reviewDate: { gte: months12Ago },
             },
@@ -1537,151 +1436,4 @@ export const complianceRouter = router({
       };
     }),
   }),
-
-  // ── Legacy flat procedures (backwards compat) ──────────────────────────
-
-  /** @deprecated use compliance.policies.list */
-  listPolicies: protectedProcedure
-    .input(
-      z.object({
-        status: z.nativeEnum(PolicyStatus).optional(),
-        search: z.string().optional(),
-        page: z.number().min(1).default(1),
-        limit: z.number().min(1).max(100).default(20),
-      })
-    )
-    .query(async ({ ctx, input }) => {
-      const { organisationId } = ctx.user as { organisationId: string };
-      const skip = (input.page - 1) * input.limit;
-      const where = {
-        organisationId,
-        ...(input.status && { status: input.status }),
-        ...(input.search && {
-          policyName: {
-            contains: input.search,
-            mode: "insensitive" as const,
-          },
-        }),
-      };
-      const [items, total] = await Promise.all([
-        ctx.prisma.policy.findMany({
-          where,
-          skip,
-          take: input.limit,
-          orderBy: { policyName: "asc" },
-        }),
-        ctx.prisma.policy.count({ where }),
-      ]);
-      return { items, total, page: input.page, limit: input.limit };
-    }),
-
-  /** @deprecated use compliance.complaints.list */
-  listComplaints: protectedProcedure
-    .input(
-      z.object({
-        status: z.string().optional(),
-        page: z.number().min(1).default(1),
-        limit: z.number().min(1).max(100).default(20),
-      })
-    )
-    .query(async ({ ctx, input }) => {
-      const { organisationId } = ctx.user as { organisationId: string };
-      const skip = (input.page - 1) * input.limit;
-      const where = {
-        organisationId,
-        ...(input.status && { status: input.status as never }),
-      };
-      const [items, total] = await Promise.all([
-        ctx.prisma.complaint.findMany({
-          where,
-          skip,
-          take: input.limit,
-          orderBy: { dateReceived: "desc" },
-          include: {
-            serviceUser: {
-              select: { id: true, firstName: true, lastName: true },
-            },
-          },
-        }),
-        ctx.prisma.complaint.count({ where }),
-      ]);
-      return { items, total, page: input.page, limit: input.limit };
-    }),
-
-  /** @deprecated use compliance.complaints.create */
-  createComplaint: protectedProcedure
-    .input(
-      z.object({
-        dateReceived: z.date(),
-        complainantName: z.string().min(1),
-        complainantRelationship: z.string().optional(),
-        serviceUserId: z.string().min(1).optional(),
-        natureOfComplaint: z.string().optional(),
-      })
-    )
-    .mutation(async ({ ctx, input }) => {
-      const { organisationId, id: userId } = ctx.user as {
-        organisationId: string;
-        id: string;
-      };
-      return ctx.prisma.complaint.create({
-        data: {
-          ...input,
-          organisationId,
-          createdBy: userId,
-          updatedBy: userId,
-        },
-      });
-    }),
-
-  /** @deprecated use compliance.audits.list */
-  listAudits: protectedProcedure
-    .input(
-      z.object({
-        page: z.number().min(1).default(1),
-        limit: z.number().min(1).max(100).default(20),
-      })
-    )
-    .query(async ({ ctx, input }) => {
-      const { organisationId } = ctx.user as { organisationId: string };
-      const skip = (input.page - 1) * input.limit;
-      const [items, total] = await Promise.all([
-        ctx.prisma.qualityAudit.findMany({
-          where: { organisationId },
-          skip,
-          take: input.limit,
-          orderBy: { auditDate: "desc" },
-        }),
-        ctx.prisma.qualityAudit.count({ where: { organisationId } }),
-      ]);
-      return { items, total, page: input.page, limit: input.limit };
-    }),
-
-  /** @deprecated use compliance.inspections.list */
-  listInspections: protectedProcedure.query(async ({ ctx }) => {
-    const { organisationId } = ctx.user as { organisationId: string };
-    return ctx.prisma.careInspectorateInspection.findMany({
-      where: { organisationId },
-      orderBy: { inspectionDate: "desc" },
-    });
-  }),
-
-  /** @deprecated — CI notifications now in incidents.ciNotifications */
-  listNotifications: protectedProcedure
-    .input(
-      z.object({
-        page: z.number().min(1).default(1),
-        limit: z.number().min(1).max(100).default(20),
-      })
-    )
-    .query(async ({ ctx, input }) => {
-      const { organisationId } = ctx.user as { organisationId: string };
-      const skip = (input.page - 1) * input.limit;
-      return ctx.prisma.careInspectorateNotification.findMany({
-        where: { organisationId },
-        skip,
-        take: input.limit,
-        orderBy: { createdAt: "desc" },
-      });
-    }),
 });
