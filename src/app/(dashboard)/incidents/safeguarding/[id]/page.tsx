@@ -1,14 +1,13 @@
 "use client";
 
 import { use } from "react";
-import Link from "next/link";
-import { ChevronLeft, Shield, Calendar, User, Clock } from "lucide-react";
+import { Shield, Calendar, User, Clock } from "lucide-react";
 import { useSession } from "next-auth/react";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { trpc } from "@/lib/trpc";
 import { formatDate } from "@/lib/utils";
+import { BackLink } from "@/components/modules/back-link";
 import { SafeguardingTracker } from "@/components/modules/incidents/safeguarding-tracker";
 import {
   SAFEGUARDING_TYPE_LABELS,
@@ -54,12 +53,7 @@ export default function SafeguardingDetailPage({
   return (
     <div className="max-w-3xl space-y-6">
       {/* Back */}
-      <Button variant="ghost" size="sm" asChild className="-ml-2">
-        <Link href="/incidents?tab=safeguarding">
-          <ChevronLeft className="h-4 w-4 mr-1" />
-          Safeguarding
-        </Link>
-      </Button>
+      <BackLink href="/incidents?tab=safeguarding" label="Safeguarding" />
 
       {/* Header */}
       <div className="space-y-2">

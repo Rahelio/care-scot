@@ -23,6 +23,7 @@ import {
 import { trpc } from "@/lib/trpc";
 import { formatDate } from "@/lib/utils";
 import { downloadCsv } from "@/lib/download-csv";
+import { TableSkeleton } from "@/components/ui/skeletons";
 import { COMPLAINT_STATUS_CONFIG } from "./compliance-meta";
 
 export function ComplaintList() {
@@ -65,7 +66,7 @@ export function ComplaintList() {
       </div>
 
       {isPending ? (
-        <div className="space-y-3 py-4">{Array.from({ length: 4 }).map((_, i) => (<div key={i} className="h-16 w-full animate-pulse rounded-lg bg-muted" />))}</div>
+        <TableSkeleton cols={7} />
       ) : items.length === 0 ? (
         <div className="py-12 text-center text-muted-foreground">
           No complaints recorded.

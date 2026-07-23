@@ -254,14 +254,14 @@ export function AuditLogViewer({ entityType, entityId }: AuditLogViewerProps) {
                 />
               </div>
               <Select
-                value={filterAction}
-                onValueChange={(v) => { setFilterAction(v as AuditAction | ""); setPage(1); }}
+                value={filterAction || "ALL"}
+                onValueChange={(v) => { setFilterAction(v === "ALL" ? "" : (v as AuditAction)); setPage(1); }}
               >
                 <SelectTrigger className="h-8 text-xs w-[130px]">
                   <SelectValue placeholder="All actions" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">All actions</SelectItem>
+                  <SelectItem value="ALL">All actions</SelectItem>
                   {Object.entries(ACTION_LABELS).map(([k, v]) => (
                     <SelectItem key={k} value={k}>{v}</SelectItem>
                   ))}

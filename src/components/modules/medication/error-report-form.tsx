@@ -26,6 +26,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Card, CardContent } from "@/components/ui/card";
+import { ServiceUserSelectField } from "@/components/modules/service-user-select-field";
 
 // ─── NCC MERP category metadata ────────────────────────────────────────────
 
@@ -193,39 +194,12 @@ export function ErrorReportForm({
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-        {/* Service User */}
-        {defaultServiceUserId ? (
-          <div className="rounded-md border px-4 py-3 text-sm bg-muted/30">
-            <span className="text-muted-foreground">Service user: </span>
-            <span className="font-medium">{defaultServiceUserName}</span>
-          </div>
-        ) : (
-          <FormField
-            control={form.control}
-            name="serviceUserId"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Service User (optional)</FormLabel>
-                <Select onValueChange={field.onChange} value={field.value}>
-                  <FormControl>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select service user…" />
-                    </SelectTrigger>
-                  </FormControl>
-                  <SelectContent>
-                    <SelectItem value="">— Not linked to a service user —</SelectItem>
-                    {clients.map((c) => (
-                      <SelectItem key={c.id} value={c.id}>
-                        {c.firstName} {c.lastName}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-        )}
+        <ServiceUserSelectField
+          control={form.control}
+          clients={clients}
+          defaultServiceUserId={defaultServiceUserId}
+          defaultServiceUserName={defaultServiceUserName}
+        />
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           {/* Error Date */}
@@ -277,14 +251,21 @@ export function ErrorReportForm({
           render={({ field }) => (
             <FormItem>
               <FormLabel>NCC MERP Category</FormLabel>
-              <Select onValueChange={field.onChange} value={field.value}>
+              <Select
+                onValueChange={(v) =>
+                  field.onChange(v === "UNCATEGORISED" ? "" : v)
+                }
+                value={field.value || "UNCATEGORISED"}
+              >
                 <FormControl>
                   <SelectTrigger>
                     <SelectValue placeholder="Select category…" />
                   </SelectTrigger>
                 </FormControl>
                 <SelectContent>
-                  <SelectItem value="">— Not categorised —</SelectItem>
+                  <SelectItem value="UNCATEGORISED">
+                    — Not categorised —
+                  </SelectItem>
                   {NCC_MERP_CATEGORIES.map((cat) => (
                     <SelectItem key={cat.value} value={cat.value}>
                       {cat.label}

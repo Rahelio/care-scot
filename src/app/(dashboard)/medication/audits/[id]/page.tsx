@@ -1,14 +1,13 @@
 "use client";
 
 import { use } from "react";
-import Link from "next/link";
-import { ChevronLeft, Calendar, User, CheckCircle2, XCircle, MinusCircle } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Calendar, User, CheckCircle2, XCircle, MinusCircle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { trpc } from "@/lib/trpc";
 import { formatDate } from "@/lib/utils";
+import { BackLink } from "@/components/modules/back-link";
 import {
   AuditTool,
   AUDIT_CHECKLIST,
@@ -77,12 +76,7 @@ export default function MedicationAuditDetailPage({
   return (
     <div className="max-w-4xl space-y-6">
       {/* Back */}
-      <Button variant="ghost" size="sm" asChild className="-ml-2">
-        <Link href="/medication/audits">
-          <ChevronLeft className="h-4 w-4 mr-1" />
-          Medication Audits
-        </Link>
-      </Button>
+      <BackLink href="/medication/audits" label="Medication Audits" />
 
       {/* Header */}
       <div className="flex items-start justify-between gap-4 flex-wrap">

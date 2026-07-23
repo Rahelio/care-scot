@@ -1,9 +1,7 @@
 "use client";
 
 import { use } from "react";
-import Link from "next/link";
-import { ChevronLeft } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { BackLink } from "@/components/modules/back-link";
 import { ComplaintDetail } from "@/components/modules/compliance/complaint-detail";
 
 export default function ComplaintDetailPage({
@@ -15,12 +13,7 @@ export default function ComplaintDetailPage({
 
   return (
     <div className="max-w-3xl space-y-6">
-      <Button variant="ghost" size="sm" asChild className="-ml-2">
-        <Link href="/compliance?tab=complaints">
-          <ChevronLeft className="h-4 w-4 mr-1" />
-          Complaints
-        </Link>
-      </Button>
+      <BackLink href="/compliance?tab=complaints" label="Complaints" />
 
       <ComplaintDetail complaintId={id} />
     </div>

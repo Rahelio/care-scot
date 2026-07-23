@@ -97,9 +97,9 @@ export default function MedicationAuditsPage() {
       <div className="flex items-center gap-3">
         <span className="text-sm text-muted-foreground">Status:</span>
         <Select
-          value={statusFilter}
+          value={statusFilter || "ALL"}
           onValueChange={(v) => {
-            setStatusFilter(v);
+            setStatusFilter(v === "ALL" ? "" : v);
             setPage(1);
           }}
         >
@@ -107,7 +107,7 @@ export default function MedicationAuditsPage() {
             <SelectValue placeholder="All" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="">All</SelectItem>
+            <SelectItem value="ALL">All</SelectItem>
             <SelectItem value="OPEN">Open</SelectItem>
             <SelectItem value="IN_PROGRESS">In Progress</SelectItem>
             <SelectItem value="CLOSED">Closed</SelectItem>

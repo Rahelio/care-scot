@@ -4,28 +4,23 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 
-const TABS = [
-  { label: "Overview", suffix: "" },
-  { label: "Induction", suffix: "/induction" },
-  { label: "PVG & Registration", suffix: "/pvg" },
-  { label: "Training", suffix: "/training" },
-  { label: "Supervision", suffix: "/supervision" },
-  { label: "Appraisals", suffix: "/appraisals" },
-  { label: "Absence", suffix: "/absence" },
-  { label: "Health", suffix: "/health" },
-  { label: "Disciplinary", suffix: "/disciplinary" },
-  { label: "Leaving", suffix: "/leaving" },
-  { label: "Documents", suffix: "/documents" },
-];
+export interface ProfileTab {
+  label: string;
+  suffix: string;
+}
 
-export function StaffProfileTabs({ staffId }: { staffId: string }) {
+interface ProfileTabsProps {
+  base: string;
+  tabs: ProfileTab[];
+}
+
+export function ProfileTabs({ base, tabs }: ProfileTabsProps) {
   const pathname = usePathname();
-  const base = `/staff/${staffId}`;
 
   return (
     <div className="border-b bg-background">
       <nav className="-mb-px flex overflow-x-auto px-6">
-        {TABS.map((tab) => {
+        {tabs.map((tab) => {
           const href = `${base}${tab.suffix}`;
           const isActive =
             tab.suffix === ""

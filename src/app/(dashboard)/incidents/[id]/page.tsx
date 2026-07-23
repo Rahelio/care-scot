@@ -1,9 +1,7 @@
 "use client";
 
 import { use } from "react";
-import Link from "next/link";
 import {
-  ChevronLeft,
   TriangleAlert,
   Calendar,
   MapPin,
@@ -14,11 +12,11 @@ import {
 } from "lucide-react";
 import { useSession } from "next-auth/react";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { trpc } from "@/lib/trpc";
 import { formatDate } from "@/lib/utils";
+import { BackLink } from "@/components/modules/back-link";
 import { IncidentInvestigationForm } from "@/components/modules/incidents/incident-investigation-form";
 import {
   INCIDENT_TYPE_LABELS,
@@ -75,12 +73,7 @@ export default function IncidentDetailPage({
   return (
     <div className="max-w-3xl space-y-6">
       {/* Back */}
-      <Button variant="ghost" size="sm" asChild className="-ml-2">
-        <Link href="/incidents">
-          <ChevronLeft className="h-4 w-4 mr-1" />
-          Incidents
-        </Link>
-      </Button>
+      <BackLink href="/incidents" label="Incidents" />
 
       {/* Header */}
       <div className="space-y-2">

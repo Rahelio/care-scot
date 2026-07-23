@@ -26,6 +26,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Card, CardContent } from "@/components/ui/card";
+import { ServiceUserSelectField } from "@/components/modules/service-user-select-field";
 import { INCIDENT_TYPE_LABELS, SEVERITY_CONFIG } from "./incident-meta";
 
 const INCIDENT_TYPES = Object.entries(INCIDENT_TYPE_LABELS);
@@ -262,39 +263,12 @@ export function IncidentForm({
           )}
         />
 
-        {/* Service User */}
-        {defaultServiceUserId ? (
-          <div className="rounded-md border px-4 py-3 text-sm bg-muted/30">
-            <span className="text-muted-foreground">Service user: </span>
-            <span className="font-medium">{defaultServiceUserName}</span>
-          </div>
-        ) : (
-          <FormField
-            control={form.control}
-            name="serviceUserId"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Service User (optional)</FormLabel>
-                <Select onValueChange={field.onChange} value={field.value}>
-                  <FormControl>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select service user…" />
-                    </SelectTrigger>
-                  </FormControl>
-                  <SelectContent>
-                    <SelectItem value="">— Not linked to a service user —</SelectItem>
-                    {clients.map((c) => (
-                      <SelectItem key={c.id} value={c.id}>
-                        {c.firstName} {c.lastName}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-        )}
+        <ServiceUserSelectField
+          control={form.control}
+          clients={clients}
+          defaultServiceUserId={defaultServiceUserId}
+          defaultServiceUserName={defaultServiceUserName}
+        />
 
         <FormField
           control={form.control}

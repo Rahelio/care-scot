@@ -263,14 +263,17 @@ export function IncidentInvestigationForm({
           render={({ field }) => (
             <FormItem>
               <FormLabel>Update Status</FormLabel>
-              <Select onValueChange={field.onChange} value={field.value}>
+              <Select
+                onValueChange={(v) => field.onChange(v === "NO_CHANGE" ? "" : v)}
+                value={field.value || "NO_CHANGE"}
+              >
                 <FormControl>
                   <SelectTrigger>
                     <SelectValue placeholder="Keep current status…" />
                   </SelectTrigger>
                 </FormControl>
                 <SelectContent>
-                  <SelectItem value="">— No change —</SelectItem>
+                  <SelectItem value="NO_CHANGE">— No change —</SelectItem>
                   <SelectItem value="UNDER_INVESTIGATION">
                     Under Investigation
                   </SelectItem>

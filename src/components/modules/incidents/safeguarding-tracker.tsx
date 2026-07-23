@@ -217,14 +217,17 @@ export function SafeguardingTracker({
           render={({ field }) => (
             <FormItem>
               <FormLabel>Status</FormLabel>
-              <Select onValueChange={field.onChange} value={field.value}>
+              <Select
+                onValueChange={(v) => field.onChange(v === "NO_CHANGE" ? "" : v)}
+                value={field.value || "NO_CHANGE"}
+              >
                 <FormControl>
                   <SelectTrigger>
                     <SelectValue placeholder="Keep current status…" />
                   </SelectTrigger>
                 </FormControl>
                 <SelectContent>
-                  <SelectItem value="">— No change —</SelectItem>
+                  <SelectItem value="NO_CHANGE">— No change —</SelectItem>
                   <SelectItem value="OPEN">Open</SelectItem>
                   <SelectItem value="REFERRED">Referred</SelectItem>
                   <SelectItem value="UNDER_INVESTIGATION">

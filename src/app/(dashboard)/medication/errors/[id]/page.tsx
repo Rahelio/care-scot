@@ -1,21 +1,19 @@
 "use client";
 
 import { use } from "react";
-import Link from "next/link";
 import {
-  ChevronLeft,
   AlertTriangle,
   CheckCircle2,
   Clock,
   User,
   Calendar,
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { trpc } from "@/lib/trpc";
 import { formatDate } from "@/lib/utils";
+import { BackLink } from "@/components/modules/back-link";
 import { InvestigationForm } from "@/components/modules/medication/investigation-form";
 import {
   NCC_MERP_CATEGORIES,
@@ -92,12 +90,7 @@ export default function MedicationErrorDetailPage({
   return (
     <div className="max-w-3xl space-y-6">
       {/* Back */}
-      <Button variant="ghost" size="sm" asChild className="-ml-2">
-        <Link href="/medication/errors">
-          <ChevronLeft className="h-4 w-4 mr-1" />
-          Medication Error Log
-        </Link>
-      </Button>
+      <BackLink href="/medication/errors" label="Medication Error Log" />
 
       {/* Header */}
       <div className="flex items-start justify-between gap-4">
