@@ -3,6 +3,41 @@ import Credentials from "next-auth/providers/credentials";
 import { compare } from "bcryptjs";
 import { prisma } from "./prisma";
 
+// Sliding-window brute-force guard on the credentials login path.
+// Two independent limits: per-IP (catches credential stuffing across many
+// accounts) and per-email (catches targeted brute force across many IPs).
+// Every attempt is logged before the outcome is known, and the check runs
+// before any DB lookup/bcrypt work so a locked-out caller can't burn cycles.
+const LOGIN_ATTEMPT_WINDOW_MS = 15 * 60 * 1000;
+const MAX_ATTEMPTS_PER_IP = 20;
+const MAX_ATTEMPTS_PER_EMAIL = 5;
+
+function getClientIp(request: Request): string {
+  const forwardedFor = request.headers.get("x-forwarded-for");
+  if (forwardedFor) return forwardedFor.split(",")[0].trim();
+  return "unknown";
+}
+
+async function isRateLimited(email: string, ipAddress: string): Promise<boolean> {
+  const since = new Date(Date.now() - LOGIN_ATTEMPT_WINDOW_MS);
+
+  const [ipCount, emailCount] = await Promise.all([
+    prisma.loginAttempt.count({ where: { ipAddress, createdAt: { gte: since } } }),
+    prisma.loginAttempt.count({ where: { email, createdAt: { gte: since } } }),
+  ]);
+
+  return ipCount >= MAX_ATTEMPTS_PER_IP || emailCount >= MAX_ATTEMPTS_PER_EMAIL;
+}
+
+// Opportunistic prune so login_attempts doesn't grow unbounded — cheap
+// enough to run inline rather than needing a dedicated cron for this alone.
+async function pruneOldAttempts(): Promise<void> {
+  if (Math.random() >= 0.01) return;
+  await prisma.loginAttempt.deleteMany({
+    where: { createdAt: { lt: new Date(Date.now() - 24 * 60 * 60 * 1000) } },
+  });
+}
+
 export const { handlers, signIn, signOut, auth } = NextAuth({
   providers: [
     Credentials({
@@ -10,11 +45,19 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         email: { label: "Email", type: "email" },
         password: { label: "Password", type: "password" },
       },
-      async authorize(credentials) {
+      async authorize(credentials, request) {
         if (!credentials?.email || !credentials?.password) return null;
 
+        const email = (credentials.email as string).toLowerCase();
+        const ipAddress = getClientIp(request);
+
+        if (await isRateLimited(email, ipAddress)) return null;
+
+        await prisma.loginAttempt.create({ data: { email, ipAddress } });
+        await pruneOldAttempts();
+
         const user = await prisma.user.findUnique({
-          where: { email: credentials.email as string },
+          where: { email },
           select: {
             id: true,
             email: true,

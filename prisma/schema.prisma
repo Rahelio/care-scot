@@ -611,6 +611,17 @@ model VerificationToken {
   @@map("verification_tokens")
 }
 
+model LoginAttempt {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email     String
+  ipAddress String   @map("ip_address")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  @@index([email, createdAt])
+  @@index([ipAddress, createdAt])
+  @@map("login_attempts")
+}
+
 model AuditLog {
   id             String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   organisationId String      @map("organisation_id") @db.Uuid

@@ -4,6 +4,8 @@ This guide walks you through setting up the full deployment pipeline: **GitHub A
 
 By the end, every `git push` to `main` will automatically lint, build a Docker image, push it to ECR, and deploy it to App Runner.
 
+> **Never paste real values into this file.** Every value below (passwords, secrets, ARNs, account IDs, service URLs) is a placeholder for you to substitute *only in your terminal or in App Runner's environment configuration* — never in a file that gets committed to git, especially on a public repo. If you ever do commit a real secret, treat it as compromised and rotate it immediately rather than relying on removing it from a later commit.
+
 ---
 
 ## Table of Contents
@@ -265,8 +267,8 @@ Replace the placeholder values below with your actual values:
 
 ```bash
 ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
-VPC_CONNECTOR_ARN="arn:aws:apprunner:eu-west-2:577638379806:vpcconnector/carescot-vpc-connector/1/bdfccea940114a159db5fe97c271d752"
-ECR_ROLE_ARN="arn:aws:iam::577638379806:role/carescot-apprunner-ecr-role"
+VPC_CONNECTOR_ARN="arn:aws:apprunner:eu-west-2:${ACCOUNT_ID}:vpcconnector/carescot-vpc-connector/1/YOUR_CONNECTOR_ID"
+ECR_ROLE_ARN="arn:aws:iam::${ACCOUNT_ID}:role/carescot-apprunner-ecr-role"
 
 aws apprunner create-service \
   --service-name carescot \
@@ -277,8 +279,8 @@ aws apprunner create-service \
       "ImageConfiguration": {
         "Port": "3000",
         "RuntimeEnvironmentVariables": {
-          "DATABASE_URL": "postgresql://postgres:uVGHkqzrGLGtKgrc6Y6vWLS2SMn6t6@carescot-db.cvsigeqqesy3.eu-west-2.rds.amazonaws.com:5432/carescot?schema=public",
-          "AUTH_SECRET": "fXvt8eFhxEz+LewiqF2MPWW5nPVjXqTYVl3jrR43ahM=",
+          "DATABASE_URL": "postgresql://postgres:YOUR_DB_PASSWORD@YOUR_DB_ENDPOINT:5432/carescot?schema=public",
+          "AUTH_SECRET": "YOUR_GENERATED_AUTH_SECRET",
           "AUTH_URL": "https://will-update-after-creation.awsapprunner.com",
           "STORAGE_PROVIDER": "local",
           "NODE_ENV": "production"
@@ -321,7 +323,7 @@ Once the service is created, update the `AUTH_URL` environment variable to match
 
 ```bash
 aws apprunner update-service \
-  --service-arn arn:aws:apprunner:eu-west-2:577638379806:service/carescot/26a72bc11b4d4dc9bdb2aa7690ae2a52 \
+  --service-arn arn:aws:apprunner:eu-west-2:${ACCOUNT_ID}:service/carescot/YOUR_SERVICE_ID \
   --source-configuration '{
     "ImageRepository": {
       "ImageIdentifier": "'"$ACCOUNT_ID"'.dkr.ecr.eu-west-2.amazonaws.com/carescot:latest",
@@ -329,9 +331,9 @@ aws apprunner update-service \
       "ImageConfiguration": {
         "Port": "3000",
         "RuntimeEnvironmentVariables": {
-          "DATABASE_URL": "postgresql://postgres:uVGHkqzrGLGtKgrc6Y6vWLS2SMn6t6@carescot-db.cvsigeqqesy3.eu-west-2.rds.amazonaws.com:5432/carescot?schema=public",
-          "AUTH_SECRET": "fXvt8eFhxEz+LewiqF2MPWW5nPVjXqTYVl3jrR43ahM=",
-          "AUTH_URL": "https://ph2jsifemw.eu-west-2.awsapprunner.com",
+          "DATABASE_URL": "postgresql://postgres:YOUR_DB_PASSWORD@YOUR_DB_ENDPOINT:5432/carescot?schema=public",
+          "AUTH_SECRET": "YOUR_GENERATED_AUTH_SECRET",
+          "AUTH_URL": "https://YOUR_SERVICE_URL.eu-west-2.awsapprunner.com",
           "STORAGE_PROVIDER": "local",
           "NODE_ENV": "production"
         }

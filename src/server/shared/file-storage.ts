@@ -15,6 +15,16 @@ export interface FileStorageAdapter {
   getUrl(storagePath: string): string;
 }
 
+// Belt-and-suspenders: entityType/orgId become filesystem path segments below,
+// so even though callers are expected to pass pre-validated values (see the
+// FILE_ENTITY_TYPES allowlist in the files router), the adapter itself
+// refuses anything that could traverse outside baseDir.
+function assertSafePathSegment(value: string, label: string): void {
+  if (!value || value.includes("/") || value.includes("\\") || value.includes("..")) {
+    throw new Error(`Invalid ${label}: '${value}'`);
+  }
+}
+
 export class LocalFileAdapter implements FileStorageAdapter {
   private readonly baseDir: string;
 
@@ -29,6 +39,8 @@ export class LocalFileAdapter implements FileStorageAdapter {
     orgId: string,
     entityType = "general",
   ): Promise<string> {
+    assertSafePathSegment(orgId, "orgId");
+    assertSafePathSegment(entityType, "entityType");
     const now = new Date();
     const year = now.getFullYear().toString();
     const month = (now.getMonth() + 1).toString().padStart(2, "0");

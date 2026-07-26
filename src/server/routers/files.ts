@@ -11,6 +11,11 @@ const FORBIDDEN_EXTENSIONS = new Set([
   ".jar", ".app", ".deb", ".rpm", ".vbs", ".scr",
 ]);
 
+// Entity types a file can be attached to — also used as a filesystem path
+// segment in LocalFileAdapter, so this must stay an explicit allowlist
+// rather than an arbitrary client-supplied string (path traversal risk).
+const FILE_ENTITY_TYPES = ["staff_member"] as const;
+
 const ALLOWED_MIME_TYPES = new Set([
   "application/pdf",
   "image/jpeg",
@@ -59,7 +64,7 @@ export const filesRouter = router({
         fileName: z.string().min(1).max(255),
         mimeType: z.string().min(1),
         dataBase64: z.string().min(1),
-        entityType: z.string().optional(),
+        entityType: z.enum(FILE_ENTITY_TYPES).optional(),
         entityId: z.string().min(1).optional(),
       }),
     )
@@ -154,7 +159,7 @@ export const filesRouter = router({
   getByEntity: protectedProcedure
     .input(
       z.object({
-        entityType: z.string(),
+        entityType: z.enum(FILE_ENTITY_TYPES),
         entityId: z.string().min(1),
       }),
     )
