@@ -459,13 +459,15 @@ This outputs something like `arn:aws:iam::123456789012:role/carescot-github-acti
 
 Go to your GitHub repository: **Settings > Secrets and variables > Actions > New repository secret**.
 
-Add these three secrets:
+Add these five secrets:
 
 | Secret Name              | Value                                                         |
 | ------------------------ | ------------------------------------------------------------- |
 | `AWS_ROLE_ARN`           | `arn:aws:iam::123456789012:role/carescot-github-actions`      |
 | `APP_RUNNER_SERVICE_ARN` | `arn:aws:apprunner:eu-west-2:123456789012:service/carescot/…` |
 | `E2E_AUTH_SECRET`        | Output of `openssl rand -base64 32` — a throwaway secret only used by the `e2e` job's disposable CI database, unrelated to the real production `AUTH_SECRET` |
+| `DOCKERHUB_USERNAME`     | Your Docker Hub username |
+| `DOCKERHUB_TOKEN`        | A Docker Hub access token (not your account password) |
 
 You can find the service ARN with:
 
@@ -473,6 +475,22 @@ You can find the service ARN with:
 aws apprunner list-services --region eu-west-2 \
   --query "ServiceSummaryList[?ServiceName=='carescot'].ServiceArn" --output text
 ```
+
+### 7a. Create the Docker Hub access token
+
+The `e2e` job's Postgres service container and the `build-and-deploy` job's
+`node:20-alpine` base image are both pulled from Docker Hub. Anonymous pulls
+from shared GitHub-hosted runner IPs are subject to Docker Hub's (much lower)
+unauthenticated rate limit and can fail with connection timeouts under load —
+authenticating the pulls avoids this. A free Docker Hub account is enough, no
+paid plan required.
+
+1. Create a free account at https://hub.docker.com/signup if you don't have one.
+2. Go to **Account Settings > Security > Personal access tokens > Generate new token**.
+3. Give it a description (e.g. `carescot-github-actions`), set permissions to
+   **Public Repo Read-only**, and generate it.
+4. Copy the token immediately (it's only shown once) and store it as the
+   `DOCKERHUB_TOKEN` secret; store your Docker Hub username as `DOCKERHUB_USERNAME`.
 
 ---
 

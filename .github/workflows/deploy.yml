@@ -44,6 +44,14 @@ jobs:
     services:
       postgres:
         image: postgres:16
+        # Authenticates this specific image pull against Docker Hub.
+        # Anonymous pulls from shared GitHub-hosted runner IPs hit Docker
+        # Hub's (much lower) unauthenticated rate limit and can fail with
+        # connection timeouts under load — this needs a free Docker Hub
+        # account + access token, not a paid plan.
+        credentials:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
@@ -105,6 +113,15 @@ jobs:
       - name: Login to Amazon ECR
         id: ecr-login
         uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Login to Docker Hub
+        # The Dockerfile's node:20-alpine base image is pulled from Docker
+        # Hub across 4 build stages — same anonymous-rate-limit risk as the
+        # e2e job's postgres service. Same credentials as that job.
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Build, tag, and push Docker image
         env:
