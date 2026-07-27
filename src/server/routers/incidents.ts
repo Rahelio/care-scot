@@ -22,7 +22,7 @@ const incManageProcedure = protectedProcedure.use(
 
 const HIGH_SEVERITIES: IncidentSeverity[] = ["HIGH", "CRITICAL"];
 
-function getCiNotificationType(
+export function getCiNotificationType(
   type: IncidentType
 ): CareInspectorateNotificationType | null {
   switch (type) {
@@ -39,7 +39,7 @@ function getCiNotificationType(
   }
 }
 
-function shouldEscalate(type: IncidentType, severity: IncidentSeverity): boolean {
+export function shouldEscalate(type: IncidentType, severity: IncidentSeverity): boolean {
   if (type === "DEATH" || type === "INFECTIOUS_OUTBREAK") return true;
   if (
     (type === "ASSAULT" || type === "SAFEGUARDING") &&

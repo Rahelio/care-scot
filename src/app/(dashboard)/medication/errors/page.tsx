@@ -15,7 +15,7 @@ import {
 import { ErrorsLog } from "@/components/modules/medication/errors-log";
 
 const CATEGORY_OPTIONS = [
-  { value: "", label: "All categories" },
+  { value: "ALL", label: "All categories" },
   { value: "A", label: "A — Near Miss" },
   { value: "B", label: "B — No Harm (not reached)" },
   { value: "C", label: "C — No Harm (reached)" },
@@ -29,12 +29,12 @@ const CATEGORY_OPTIONS = [
 
 export default function MedicationErrorsPage() {
   const [page, setPage] = useState(1);
-  const [categoryFilter, setCategoryFilter] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState("ALL");
 
   const { data, isPending } = trpc.medication.errors.list.useQuery({
     page,
     limit: 20,
-    nccMerpCategory: categoryFilter ? (categoryFilter as never) : undefined,
+    nccMerpCategory: categoryFilter !== "ALL" ? (categoryFilter as never) : undefined,
   });
 
   const items = data?.items ?? [];

@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { StatusBadge } from "./status-badge";
 import { PlanWarningBanner } from "./plan-warning-banner";
 import { StatusChangeButton } from "./status-change-button";
+import { GdprActions } from "./gdpr-actions";
 import { getPlanWarningStatus } from "@/lib/plan-warning";
 import { formatDate } from "@/lib/utils";
 import type { ServiceUserStatus } from "@prisma/client";
@@ -65,6 +66,10 @@ export function ProfileHeader({ client }: ProfileHeaderProps) {
               Edit
             </Link>
           </Button>
+          <GdprActions
+            clientId={client.id}
+            clientFullName={`${client.firstName} ${client.lastName}`}
+          />
         </div>
       </div>
 

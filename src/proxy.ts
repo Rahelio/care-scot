@@ -17,8 +17,9 @@ export const config = {
      * - _next/static (static files)
      * - _next/image (image optimisation)
      * - favicon.ico
-     * - login / forgot-password (public auth pages)
+     * - login / forgot-password / reset-password / signup / verify-email (public auth pages)
+     * - privacy / terms (public legal pages)
      */
-    "/((?!api|_next/static|_next/image|favicon.ico|login|forgot-password).*)",
+    "/((?!api|_next/static|_next/image|favicon.ico|login|forgot-password|reset-password|signup|verify-email|privacy|terms).*)",
   ],
 };

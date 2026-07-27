@@ -19,7 +19,9 @@ By the end, every `git push` to `main` will automatically lint, build a Docker i
 7. [Add GitHub Secrets](#7-add-github-secrets)
 8. [Test the Pipeline](#8-test-the-pipeline)
 9. [Custom Domain (Optional)](#9-custom-domain-optional)
-10. [Troubleshooting](#10-troubleshooting)
+10. [Schedule the Compliance-Check Cron](#10-schedule-the-compliance-check-cron)
+11. [Configure Third-Party Services (Sentry, SES, Stripe, Turnstile)](#11-configure-third-party-services-sentry-ses-stripe-turnstile)
+12. [Troubleshooting](#12-troubleshooting)
 
 ---
 
@@ -511,7 +513,135 @@ Remember to update the `AUTH_URL` environment variable on the App Runner service
 
 ---
 
-## 10. Troubleshooting
+## 10. Schedule the Compliance-Check Cron
+
+> **Heads up:** these EventBridge/Scheduler commands are less commonly used than the rest of this manual and haven't been run against a real AWS account while writing this — double-check flag names against the current AWS CLI docs if anything errors, rather than assuming a typo in your setup.
+
+The app has a `POST /api/cron/check-compliance` endpoint that generates notifications for expiring PVG/SSSC/training, overdue reviews/plans/policies, and stale incidents. It does nothing on its own — something has to call it on a schedule. It's gated by a bearer token, so nothing runs unless `CRON_SECRET` is set both on the App Runner service and in the scheduler config below.
+
+### 10a. Generate and set CRON_SECRET
+
+```bash
+openssl rand -base64 32
+```
+
+Add this as a `CRON_SECRET` runtime environment variable on the App Runner service (same way `DATABASE_URL`/`AUTH_SECRET` are set in step 5d) and redeploy.
+
+### 10b. Create an EventBridge connection + API destination
+
+```bash
+aws events create-connection \
+  --name carescot-cron-connection \
+  --authorization-type API_KEY \
+  --auth-parameters '{
+    "ApiKeyAuthParameters": {
+      "ApiKeyName": "Authorization",
+      "ApiKeyValue": "Bearer YOUR_CRON_SECRET"
+    }
+  }' \
+  --region eu-west-2
+
+# Note the ConnectionArn from the output, then:
+aws events create-api-destination \
+  --name carescot-check-compliance \
+  --connection-arn YOUR_CONNECTION_ARN \
+  --invocation-endpoint "https://YOUR_SERVICE_URL/api/cron/check-compliance" \
+  --http-method POST \
+  --region eu-west-2
+```
+
+Note the `ApiDestinationArn` from the output — needed below.
+
+### 10c. Create an IAM role EventBridge Scheduler can assume
+
+```bash
+cat > /tmp/scheduler-trust.json << 'EOF'
+{
+  "Version": "2012-10-17",
+  "Statement": [{
+    "Effect": "Allow",
+    "Principal": { "Service": "scheduler.amazonaws.com" },
+    "Action": "sts:AssumeRole"
+  }]
+}
+EOF
+
+aws iam create-role \
+  --role-name carescot-scheduler-role \
+  --assume-role-policy-document file:///tmp/scheduler-trust.json
+
+cat > /tmp/scheduler-policy.json << EOF
+{
+  "Version": "2012-10-17",
+  "Statement": [{
+    "Effect": "Allow",
+    "Action": "events:InvokeApiDestination",
+    "Resource": "YOUR_API_DESTINATION_ARN"
+  }]
+}
+EOF
+
+aws iam put-role-policy \
+  --role-name carescot-scheduler-role \
+  --policy-name invoke-compliance-check \
+  --policy-document file:///tmp/scheduler-policy.json
+```
+
+### 10d. Create the daily schedule
+
+```bash
+aws scheduler create-schedule \
+  --name carescot-check-compliance-daily \
+  --schedule-expression "rate(1 day)" \
+  --flexible-time-window '{"Mode": "OFF"}' \
+  --target '{
+    "Arn": "YOUR_API_DESTINATION_ARN",
+    "RoleArn": "YOUR_SCHEDULER_ROLE_ARN"
+  }' \
+  --region eu-west-2
+```
+
+### 10e. Verify it actually runs
+
+Trigger it manually once to confirm the whole chain works before waiting for the schedule:
+
+```bash
+curl -X POST https://YOUR_SERVICE_URL/api/cron/check-compliance \
+  -H "Authorization: Bearer YOUR_CRON_SECRET"
+```
+
+Should return `{"checked": N, "failed": 0, "results": [...]}`. If `failed` is 0 and `checked` matches your active org count, notifications for any due compliance items should now appear in-app.
+
+---
+
+## 11. Configure Third-Party Services (Sentry, SES, Stripe, Turnstile)
+
+All of these are optional in the sense that the app boots and runs fine without them (each integration safely no-ops when its env vars are unset — see `.env.example` for the full list and what each one does). They're required before real customers use the product, though.
+
+### 11a. Sentry (error tracking)
+
+Create a project at sentry.io, then set on the App Runner service: `SENTRY_DSN`, `NEXT_PUBLIC_SENTRY_DSN` (same value), and for readable stack traces in production, `SENTRY_ORG`/`SENTRY_PROJECT`/`SENTRY_AUTH_TOKEN` so the build step can upload source maps.
+
+### 11b. AWS SES (email)
+
+1. Verify a sending domain or address in the SES console (same AWS account/region as everything else).
+2. Request production access — SES starts in sandbox mode, where only verified recipient addresses can receive mail. This blocks real signups until lifted.
+3. Set `SES_FROM_ADDRESS` on the App Runner service to the verified address.
+
+### 11c. Stripe (billing)
+
+1. Create a Stripe account (test mode is fine to start). Get the secret key from the Dashboard and set `STRIPE_SECRET_KEY` on App Runner.
+2. Create a recurring Price with `graduated` tiered pricing, one tier per 5-seat block, for both a monthly and annual interval. Set the resulting Price IDs as `STRIPE_PRICE_MONTHLY_BLOCK`/`STRIPE_PRICE_ANNUAL_BLOCK`.
+3. Add a webhook endpoint in the Stripe Dashboard pointing at `https://YOUR_SERVICE_URL/api/webhooks/stripe`, subscribed to at minimum: `customer.subscription.created`, `customer.subscription.updated`, `customer.subscription.deleted`, `invoice.payment_failed`. Copy the signing secret into `STRIPE_WEBHOOK_SECRET`.
+4. To comp a pilot customer's seats: create a 100%-off coupon in the Stripe Dashboard, generate a promotion code from it, and give that code to the pilot — they redeem it themselves during Checkout (the checkout flow has `allow_promotion_codes` enabled).
+
+### 11d. Cloudflare Turnstile (signup CAPTCHA)
+
+Create a free Turnstile widget at the Cloudflare dashboard for your domain. Set `NEXT_PUBLIC_TURNSTILE_SITE_KEY` and `TURNSTILE_SECRET_KEY` on App Runner. Without these, `/signup` has no CAPTCHA — rate limiting alone still applies, but bots aren't blocked at the form level.
+
+---
+
+## 12. Troubleshooting
 
 ### Build fails at `npm ci`
 Check that `package-lock.json` is committed to git. The Docker build runs `npm ci` which requires it.

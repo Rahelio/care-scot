@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import { withSentryConfig } from "@sentry/nextjs";
 
 // Next.js App Router injects inline hydration/streaming <script> tags and
 // Radix UI (used throughout the component library) sets inline positioning
@@ -8,11 +9,13 @@ import type { NextConfig } from "next";
 // is the practical baseline that doesn't break the existing UI.
 const CONTENT_SECURITY_POLICY = [
   "default-src 'self'",
-  "script-src 'self' 'unsafe-inline'",
+  // https://challenges.cloudflare.com is Cloudflare Turnstile (signup CAPTCHA widget)
+  "script-src 'self' 'unsafe-inline' https://challenges.cloudflare.com",
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob:",
   "font-src 'self' data:",
-  "connect-src 'self'",
+  "connect-src 'self' https://*.sentry.io https://*.ingest.us.sentry.io https://*.ingest.de.sentry.io",
+  "frame-src https://challenges.cloudflare.com",
   "object-src 'none'",
   "base-uri 'self'",
   "frame-ancestors 'none'",
@@ -46,4 +49,11 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default nextConfig;
+export default withSentryConfig(nextConfig, {
+  org: process.env.SENTRY_ORG,
+  project: process.env.SENTRY_PROJECT,
+  authToken: process.env.SENTRY_AUTH_TOKEN,
+  // Source-map upload is silently skipped when SENTRY_AUTH_TOKEN is unset —
+  // fine for local dev, needed for readable stack traces in production.
+  silent: true,
+});

@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -13,10 +14,12 @@ import {
   UserX,
   UserCheck,
   ShieldAlert,
+  CreditCard,
 } from "lucide-react";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
+import { BillingTab } from "@/components/modules/settings/billing-tab";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -63,11 +66,12 @@ import {
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
-type Tab = "organisation" | "users" | "system";
+type Tab = "organisation" | "users" | "billing" | "system";
 
 const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
   { id: "organisation", label: "Organisation", icon: <Building2 className="h-4 w-4" /> },
   { id: "users", label: "Users", icon: <Users2 className="h-4 w-4" /> },
+  { id: "billing", label: "Billing", icon: <CreditCard className="h-4 w-4" /> },
   { id: "system", label: "System", icon: <Monitor className="h-4 w-4" /> },
 ];
 
@@ -118,8 +122,19 @@ type NewUserValues = z.infer<typeof newUserSchema>;
 // ─── Main page ───────────────────────────────────────────────────────────────
 
 export default function SettingsPage() {
+  return (
+    <Suspense fallback={<div className="py-8 text-center text-muted-foreground">Loading…</div>}>
+      <SettingsPageContent />
+    </Suspense>
+  );
+}
+
+function SettingsPageContent() {
   const { data: session } = useSession();
-  const [activeTab, setActiveTab] = useState<Tab>("organisation");
+  const searchParams = useSearchParams();
+  const [activeTab, setActiveTab] = useState<Tab>(
+    searchParams.get("checkout") ? "billing" : "organisation",
+  );
   const role = session?.user?.role as string | undefined;
 
   const isAdmin =
@@ -167,6 +182,7 @@ export default function SettingsPage() {
 
       {activeTab === "organisation" && <OrganisationTab />}
       {activeTab === "users" && <UsersTab />}
+      {activeTab === "billing" && <BillingTab />}
       {activeTab === "system" && <SystemTab />}
     </div>
   );
@@ -358,6 +374,10 @@ function UsersTab() {
     search: search || undefined,
   });
 
+  const { data: usage } = trpc.billing.getUsage.useQuery();
+  const atOrNearLimit = usage ? usage.activeUserCount >= usage.entitlement - 1 : false;
+  const atLimit = usage ? usage.activeUserCount >= usage.entitlement : false;
+
   const updateRole = trpc.settings.users.updateRole.useMutation({
     onSuccess: () => {
       toast.success("User role updated.");
@@ -386,6 +406,21 @@ function UsersTab() {
 
   return (
     <div className="space-y-4">
+      {atOrNearLimit && usage && (
+        <p
+          className={cn(
+            "text-sm rounded-md px-3 py-2 border",
+            atLimit
+              ? "text-destructive bg-destructive/5 border-destructive/30"
+              : "text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-900/40",
+          )}
+        >
+          {atLimit
+            ? `You've reached your seat limit (${usage.activeUserCount} of ${usage.entitlement} used). Add more seats in the Billing tab to add another user.`
+            : `You're close to your seat limit (${usage.activeUserCount} of ${usage.entitlement} used).`}
+        </p>
+      )}
+
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <Input

@@ -517,32 +517,35 @@ model Organisation {
   invoices              Invoice[]
   creditNotes           CreditNote[]
   sharedHCPs            SharedHealthcareProfessional[]
+  subscription          OrganisationSubscription?
 
   @@map("organisations")
 }
 
 model User {
-  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  organisationId String    @map("organisation_id") @db.Uuid
-  email          String    @unique
-  emailVerified  DateTime? @map("email_verified") @db.Timestamptz()
-  name           String?
-  image          String?
-  passwordHash   String?   @map("password_hash")
-  role           UserRole  @default(CARER)
-  staffMemberId  String?   @map("staff_member_id") @db.Uuid
-  isActive       Boolean   @default(true) @map("is_active")
-  lastLoginAt    DateTime? @map("last_login_at") @db.Timestamptz()
-  mfaEnabled     Boolean   @default(false) @map("mfa_enabled")
-  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz()
-  updatedAt      DateTime  @updatedAt @map("updated_at") @db.Timestamptz()
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organisationId    String    @map("organisation_id") @db.Uuid
+  email             String    @unique
+  emailVerified     DateTime? @map("email_verified") @db.Timestamptz()
+  name              String?
+  image             String?
+  passwordHash      String?   @map("password_hash")
+  role              UserRole  @default(CARER)
+  staffMemberId     String?   @map("staff_member_id") @db.Uuid
+  isActive          Boolean   @default(true) @map("is_active")
+  lastLoginAt       DateTime? @map("last_login_at") @db.Timestamptz()
+  mfaEnabled        Boolean   @default(false) @map("mfa_enabled")
+  passwordChangedAt DateTime? @map("password_changed_at") @db.Timestamptz()
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt         DateTime  @updatedAt @map("updated_at") @db.Timestamptz()
 
   organisation Organisation @relation(fields: [organisationId], references: [id])
   staffMember  StaffMember? @relation(fields: [staffMemberId], references: [id])
 
   // Auth.js adapter models
-  accounts Account[]
-  sessions Session[]
+  accounts            Account[]
+  sessions            Session[]
+  passwordResetTokens PasswordResetToken[]
 
   // Audit trail back-references
   auditLogs                      AuditLog[]
@@ -620,6 +623,65 @@ model LoginAttempt {
   @@index([email, createdAt])
   @@index([ipAddress, createdAt])
   @@map("login_attempts")
+}
+
+model PasswordResetToken {
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  tokenHash String    @unique @map("token_hash")
+  expiresAt DateTime  @map("expires_at") @db.Timestamptz()
+  usedAt    DateTime? @map("used_at") @db.Timestamptz()
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("password_reset_tokens")
+}
+
+model OrganisationSubscription {
+  id                       String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organisationId           String    @unique @map("organisation_id") @db.Uuid
+  stripeCustomerId         String?   @unique @map("stripe_customer_id")
+  stripeSubscriptionId     String?   @unique @map("stripe_subscription_id")
+  stripeSubscriptionItemId String?   @map("stripe_subscription_item_id")
+  stripePriceId            String?   @map("stripe_price_id")
+  // Mirrors Stripe's subscription status verbatim ("active", "trialing",
+  // "past_due", "canceled", etc.) — null means no Stripe subscription
+  // exists yet (org is on the free tier).
+  status                   String?
+  billingInterval          String?   @map("billing_interval")
+  // Paid 5-seat blocks purchased — entitlement is 5 + quantity*5.
+  quantity                 Int       @default(0)
+  currentPeriodEnd         DateTime? @map("current_period_end") @db.Timestamptz()
+  cancelAtPeriodEnd        Boolean   @default(false) @map("cancel_at_period_end")
+  createdAt                DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt                DateTime  @updatedAt @map("updated_at") @db.Timestamptz()
+
+  organisation Organisation @relation(fields: [organisationId], references: [id], onDelete: Cascade)
+
+  @@map("organisation_subscriptions")
+}
+
+// Idempotency lock for the Stripe webhook handler — `id` is the Stripe
+// event ID, so a redelivered webhook is a no-op rather than processed twice.
+model StripeWebhookEvent {
+  id          String   @id
+  type        String
+  processedAt DateTime @default(now()) @map("processed_at") @db.Timestamptz()
+
+  @@map("stripe_webhook_events")
+}
+
+model SignupAttempt {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email     String
+  ipAddress String   @map("ip_address")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  @@index([email, createdAt])
+  @@index([ipAddress, createdAt])
+  @@map("signup_attempts")
 }
 
 model AuditLog {
@@ -2041,7 +2103,7 @@ model File {
   fileType        String          @map("file_type") // MIME type
   fileSizeBytes   BigInt          @map("file_size_bytes")
   storagePath     String          @map("storage_path")
-  storageProvider StorageProvider @map("storage_provider") @default(LOCAL)
+  storageProvider StorageProvider @default(LOCAL) @map("storage_provider")
   entityType      String?         @map("entity_type") // e.g. 'service_user', 'staff_member'
   entityId        String?         @map("entity_id") @db.Uuid
   uploadedBy      String?         @map("uploaded_by") @db.Uuid

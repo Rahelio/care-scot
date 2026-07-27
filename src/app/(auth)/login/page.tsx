@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, Suspense } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { signIn } from "next-auth/react";
 import { useForm } from "react-hook-form";
@@ -107,7 +108,15 @@ function LoginForm() {
               name="password"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Password</FormLabel>
+                  <div className="flex items-center justify-between">
+                    <FormLabel>Password</FormLabel>
+                    <Link
+                      href="/forgot-password"
+                      className="text-xs text-muted-foreground hover:underline"
+                    >
+                      Forgot password?
+                    </Link>
+                  </div>
                   <FormControl>
                     <Input
                       type="password"
@@ -131,8 +140,18 @@ function LoginForm() {
             >
               {form.formState.isSubmitting ? "Signing in…" : "Sign in"}
             </Button>
+
+            <Button asChild variant="ghost" className="w-full">
+              <Link href="/signup">New organisation? Create an account</Link>
+            </Button>
           </form>
         </Form>
+
+        <p className="text-center text-xs text-muted-foreground">
+          <Link href="/privacy" className="hover:underline">Privacy Policy</Link>
+          {" · "}
+          <Link href="/terms" className="hover:underline">Terms of Service</Link>
+        </p>
       </div>
     </main>
   );

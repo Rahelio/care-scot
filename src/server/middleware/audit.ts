@@ -31,7 +31,7 @@ function toPrismaProperty(model: string): string {
   return model.charAt(0).toLowerCase() + model.slice(1);
 }
 
-function toAuditAction(operation: string): AuditAction {
+export function toAuditAction(operation: string): AuditAction {
   if (operation === "create") return AuditAction.CREATE;
   if (operation === "delete") return AuditAction.DELETE;
   return AuditAction.UPDATE;
@@ -39,7 +39,7 @@ function toAuditAction(operation: string): AuditAction {
 
 type PlainRecord = Record<string, unknown>;
 
-function extractEntityId(
+export function extractEntityId(
   operation: string,
   args: PlainRecord,
   result: unknown,
@@ -66,11 +66,11 @@ const SKIP_FIELDS = new Set([
 // JS bigint, which JSON.stringify throws on unconditionally. Stringify it
 // up front so both the equality check below and the eventual JsonB write
 // to AuditLog.changes are safe.
-function normalizeAuditValue(value: unknown): unknown {
+export function normalizeAuditValue(value: unknown): unknown {
   return typeof value === "bigint" ? value.toString() : value;
 }
 
-function buildChanges(
+export function buildChanges(
   operation: string,
   before: PlainRecord | null,
   result: unknown,

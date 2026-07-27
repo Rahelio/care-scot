@@ -103,7 +103,7 @@ export const filesRouter = router({
       return {
         ...file,
         fileSizeBytes: Number(file.fileSizeBytes),
-        url: storage.getUrl(storagePath),
+        url: await storage.getUrl(storagePath),
       };
     }),
 
@@ -178,10 +178,12 @@ export const filesRouter = router({
 
       const storage = getFileStorage();
 
-      return files.map((f) => ({
-        ...f,
-        fileSizeBytes: Number(f.fileSizeBytes),
-        url: storage.getUrl(f.storagePath),
-      }));
+      return Promise.all(
+        files.map(async (f) => ({
+          ...f,
+          fileSizeBytes: Number(f.fileSizeBytes),
+          url: await storage.getUrl(f.storagePath),
+        })),
+      );
     }),
 });

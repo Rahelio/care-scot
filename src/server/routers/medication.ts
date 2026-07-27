@@ -17,6 +17,10 @@ const auditsManageProcedure = protectedProcedure.use(requirePermission("audits.m
 // NCC MERP categories that require Care Inspectorate notification
 const HIGH_SEVERITY_CATEGORIES: NccMerpCategory[] = ["E", "F", "G", "H", "I"];
 
+export function isHighSeverityMerpCategory(category: NccMerpCategory): boolean {
+  return HIGH_SEVERITY_CATEGORIES.includes(category);
+}
+
 // Shared Zod schemas for audit findings JSON
 const auditFindingSchema = z.object({
   id: z.string(),
@@ -327,7 +331,7 @@ export const medicationRouter = router({
         // Escalate if high-severity NCC MERP category (E–I)
         if (
           input.nccMerpCategory &&
-          HIGH_SEVERITY_CATEGORIES.includes(input.nccMerpCategory)
+          isHighSeverityMerpCategory(input.nccMerpCategory)
         ) {
           // Auto-create a draft Care Inspectorate notification
           await ctx.db.careInspectorateNotification.create({

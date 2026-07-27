@@ -5,6 +5,7 @@ import { Prisma, UserRole } from "@prisma/client";
 import { router, protectedProcedure } from "../trpc";
 import { requirePermission } from "../middleware/rbac";
 import { paginationSchema } from "../shared/validators";
+import { assertSeatAvailable } from "../services/billing/seats";
 
 const settingsProcedure = protectedProcedure.use(
   requirePermission("settings.manage"),
@@ -125,6 +126,8 @@ const usersRouter = router({
       }),
     )
     .mutation(async ({ ctx, input }) => {
+      await assertSeatAvailable(ctx.db, ctx.user.organisationId);
+
       // Validate staff member belongs to same org
       if (input.staffMemberId) {
         const staff = await ctx.db.staffMember.findFirst({
@@ -218,6 +221,8 @@ const usersRouter = router({
   reactivate: usersMgmtProcedure
     .input(z.object({ userId: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {
+      await assertSeatAvailable(ctx.db, ctx.user.organisationId);
+
       return ctx.db.user.update({
         where: { id: input.userId },
         data: { isActive: true },

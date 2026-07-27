@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { router, protectedProcedure } from "../trpc";
-import { ServiceUserStatus, RiskAssessmentType, RiskLevel, ConsentType, StaffAssignmentRole } from "@prisma/client";
+import { ServiceUserStatus, RiskAssessmentType, RiskLevel, ConsentType, StaffAssignmentRole, AuditAction } from "@prisma/client";
 import { TRPCError } from "@trpc/server";
 import { createAuditLog } from "../middleware/audit";
 import { addressSchema, optionalEmailSchema, paginationSchema } from "../shared/validators";
@@ -1713,4 +1713,148 @@ export const clientsRouter = router({
       clientsNeverReviewed,
     };
   }),
+
+  // ─────────────────────────────────────────
+  // GDPR: DATA EXPORT & ERASURE
+  // ─────────────────────────────────────────
+
+  /**
+   * Full data export for a service user (UK GDPR Art. 15 subject access
+   * request). Gathers every record linked to this individual across the
+   * system. Read access to this much personal/health data at once is itself
+   * sensitive, so it's restricted to MANAGER+ and explicitly audit-logged
+   * as a VIEW/EXPORT event — the automatic ctx.db middleware only logs
+   * create/update/delete, not reads.
+   */
+  exportData: protectedProcedure
+    .input(z.object({ id: z.string().min(1) }))
+    .query(async ({ ctx, input }) => {
+      if (!MANAGER_ROLES.includes(ctx.user.role as never)) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "Only managers can export a service user's full data record",
+        });
+      }
+
+      const serviceUser = await ctx.db.serviceUser.findUniqueOrThrow({
+        where: { id: input.id },
+        include: {
+          contacts: true,
+          healthcareProfessionals: true,
+          personalPlans: true,
+          riskAssessments: true,
+          consentRecords: true,
+          serviceAgreements: true,
+          healthRecords: true,
+          careVisitRecords: true,
+          serviceUserReviews: true,
+          medications: true,
+          medicationAdminRecords: true,
+          medicationErrors: true,
+          incidents: true,
+          safeguardingConcerns: true,
+          complaints: true,
+          compliments: true,
+          satisfactionSurveys: true,
+          rotaShifts: true,
+          carePackages: true,
+          billableVisits: true,
+          invoiceLines: true,
+          assignedStaff: {
+            include: {
+              staffMember: { select: { id: true, firstName: true, lastName: true } },
+            },
+          },
+        },
+      });
+
+      // Audit trail entries for this individual's own record. Note: this
+      // does not include audit entries for their sub-records (e.g. an
+      // individual incident's own history) — a genuinely complete export
+      // would need to gather those per-entity too, which is a larger job
+      // left for a follow-up rather than blocking this phase.
+      const auditTrail = await ctx.db.auditLog.findMany({
+        where: { entityType: "ServiceUser", entityId: input.id },
+        orderBy: { createdAt: "desc" },
+      });
+
+      await createAuditLog({
+        organisationId: ctx.user.organisationId,
+        userId: ctx.user.id,
+        entityType: "ServiceUser",
+        entityId: input.id,
+        action: AuditAction.EXPORT,
+        ipAddress: ctx.ipAddress,
+        userAgent: ctx.userAgent,
+      });
+
+      return {
+        exportedAt: new Date().toISOString(),
+        serviceUser,
+        auditTrail,
+      };
+    }),
+
+  /**
+   * GDPR erasure (Art. 17): anonymizes identifying fields on the core
+   * ServiceUser record rather than hard-deleting it, so linked records
+   * (incidents, medication history, audit trail) that Care Inspectorate
+   * regulations require retaining stay intact — they just no longer point
+   * to identifiable personal details. Requires typing the client's exact
+   * name to confirm, since this is irreversible. Restricted to ORG_ADMIN+.
+   *
+   * Scope note: this clears the identifying fields on ServiceUser itself.
+   * Free-text fields on sub-records (e.g. an incident description that
+   * mentions the person by name in prose) are not scrubbed — that needs a
+   * human compliance review, not an automated pass.
+   */
+  eraseData: protectedProcedure
+    .input(z.object({ id: z.string().min(1), confirmationName: z.string().min(1) }))
+    .mutation(async ({ ctx, input }) => {
+      if (!["ORG_ADMIN", "SUPER_ADMIN"].includes(ctx.user.role)) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "Only organisation admins can erase a service user's data",
+        });
+      }
+
+      const existing = await ctx.db.serviceUser.findUniqueOrThrow({
+        where: { id: input.id },
+        select: { firstName: true, lastName: true },
+      });
+      const fullName = `${existing.firstName} ${existing.lastName}`.trim().toLowerCase();
+      if (input.confirmationName.trim().toLowerCase() !== fullName) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Confirmation name does not match — erasure was not performed.",
+        });
+      }
+
+      return ctx.db.serviceUser.update({
+        where: { id: input.id },
+        data: {
+          firstName: "Erased",
+          lastName: "Data Subject",
+          chiNumber: null,
+          addressLine1: null,
+          addressLine2: null,
+          city: null,
+          postcode: null,
+          phonePrimary: null,
+          phoneSecondary: null,
+          email: null,
+          niNumber: null,
+          gpName: null,
+          gpPractice: null,
+          gpPhone: null,
+          communicationNeeds: null,
+          culturalReligiousNeeds: null,
+          dietaryRequirements: null,
+          dailyRoutinePreferences: null,
+          advanceCarePlan: null,
+          dischargeReason: null,
+          updatedBy: ctx.user.id,
+        },
+      });
+    }),
 });

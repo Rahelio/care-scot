@@ -108,7 +108,7 @@ export const ERROR_TYPES = [
 // ─── Form schema ────────────────────────────────────────────────────────────
 
 const schema = z.object({
-  serviceUserId: z.string().uuid().optional(),
+  serviceUserId: z.string().optional(),
   errorDate: z.string().min(1, "Error date is required"),
   errorType: z.string().min(1, "Error type is required"),
   nccMerpCategory: z.string().optional(),

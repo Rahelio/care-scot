@@ -10,7 +10,7 @@ import { prisma } from "@/lib/prisma";
  * added, since a model missing from this set gets zero automatic
  * scoping via ctx.db even though it looks safe.
  */
-const ORG_SCOPED_MODELS = new Set([
+export const ORG_SCOPED_MODELS = new Set([
   "ServiceUser",
   "ServiceUserContact",
   "ServiceUserHealthcareProfessional",
@@ -65,6 +65,7 @@ const ORG_SCOPED_MODELS = new Set([
   "CreditNote",
   "VisitSchedule",
   "Notification",
+  "OrganisationSubscription",
 ]);
 
 /**
@@ -101,15 +102,75 @@ const UNIQUE_OPS = new Set([
 type AnyArgs = Record<string, unknown>;
 
 /**
- * Returns an org-scoped Prisma client that:
+ * Pure argument-transformation logic, extracted so it can be unit-tested
+ * without a live database. A regression here is the single worst thing that
+ * could happen to this app (see the org-scope.ts module comment) — this
+ * function is the entire tenant-isolation guarantee for every ctx.db call.
+ *
  *  - Auto-adds `{ organisationId }` to `where` on all list/count/many-write ops
  *  - Auto-sets `data.organisationId` on create / createMany
  *  - Auto-appends `organisationId` to `where` on single-record ops (findUnique,
  *    update, delete, upsert), so cross-org access fails as a not-found rather
  *    than succeeding
  *
- * Use via `ctx.db` in every `protectedProcedure`. The base `ctx.prisma` remains
- * available for super-admin cross-org operations.
+ * In every branch, the injected `organisationId` is spread in *last*, so it
+ * always wins over anything the caller already put in `where`/`data` —
+ * callers cannot override which org a query/write is scoped to.
+ */
+export function applyOrgScope(
+  model: string,
+  operation: string,
+  args: AnyArgs,
+  organisationId: string,
+): AnyArgs {
+  if (!ORG_SCOPED_MODELS.has(model)) {
+    return args;
+  }
+
+  // ── List / count / many-write ops: inject into where ──────────────
+  if (SCOPED_WHERE_OPS.has(operation)) {
+    args = {
+      ...args,
+      where: { ...(args.where as AnyArgs | undefined), organisationId },
+    };
+  }
+
+  // ── Create: inject into data ───────────────────────────────────────
+  if (operation === "create") {
+    args = {
+      ...args,
+      data: { ...(args.data as AnyArgs | undefined), organisationId },
+    };
+  }
+
+  if (operation === "createMany") {
+    const data = args.data;
+    args = {
+      ...args,
+      data: Array.isArray(data)
+        ? data.map((row: AnyArgs) => ({ ...row, organisationId }))
+        : { ...(data as AnyArgs), organisationId },
+    };
+  }
+
+  // ── Single-record ops: append organisationId to the where clause ───
+  // Narrows the unique-key lookup rather than replacing it, so a
+  // record belonging to another org simply isn't found (P2025)
+  // instead of being readable/writable across tenants.
+  if (UNIQUE_OPS.has(operation)) {
+    args = {
+      ...args,
+      where: { ...(args.where as AnyArgs | undefined), organisationId },
+    };
+  }
+
+  return args;
+}
+
+/**
+ * Returns an org-scoped Prisma client — see applyOrgScope() for the actual
+ * scoping logic. Use via `ctx.db` in every `protectedProcedure`. The base
+ * `ctx.prisma` remains available for super-admin cross-org operations.
  */
 export function createOrgScopedPrisma(organisationId: string) {
   return prisma.$extends({
@@ -126,48 +187,7 @@ export function createOrgScopedPrisma(organisationId: string) {
           args: AnyArgs;
           query: (args: AnyArgs) => Promise<unknown>;
         }) {
-          if (!ORG_SCOPED_MODELS.has(model)) {
-            return query(args);
-          }
-
-          // ── List / count / many-write ops: inject into where ──────────────
-          if (SCOPED_WHERE_OPS.has(operation)) {
-            args = {
-              ...args,
-              where: { ...(args.where as AnyArgs | undefined), organisationId },
-            };
-          }
-
-          // ── Create: inject into data ───────────────────────────────────────
-          if (operation === "create") {
-            args = {
-              ...args,
-              data: { ...(args.data as AnyArgs | undefined), organisationId },
-            };
-          }
-
-          if (operation === "createMany") {
-            const data = args.data;
-            args = {
-              ...args,
-              data: Array.isArray(data)
-                ? data.map((row: AnyArgs) => ({ ...row, organisationId }))
-                : { ...(data as AnyArgs), organisationId },
-            };
-          }
-
-          // ── Single-record ops: append organisationId to the where clause ───
-          // Narrows the unique-key lookup rather than replacing it, so a
-          // record belonging to another org simply isn't found (P2025)
-          // instead of being readable/writable across tenants.
-          if (UNIQUE_OPS.has(operation)) {
-            args = {
-              ...args,
-              where: { ...(args.where as AnyArgs | undefined), organisationId },
-            };
-          }
-
-          return query(args);
+          return query(applyOrgScope(model, operation, args, organisationId));
         },
       },
     },

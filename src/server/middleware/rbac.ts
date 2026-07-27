@@ -25,7 +25,8 @@ export type Permission =
   | "audits.manage"
   | "reports.view_all"
   | "settings.manage"
-  | "users.manage";
+  | "users.manage"
+  | "billing.manage";
 
 // ─── Role → permissions map ────────────────────────────────────────────────
 
@@ -66,6 +67,7 @@ const ORG_ADMIN_PERMISSIONS: Permission[] = [
   ...MANAGER_PERMISSIONS,
   "settings.manage",
   "users.manage",
+  "billing.manage",
 ];
 
 const ALL_PERMISSIONS: Permission[] = [
@@ -89,6 +91,7 @@ const ALL_PERMISSIONS: Permission[] = [
   "reports.view_all",
   "settings.manage",
   "users.manage",
+  "billing.manage",
 ];
 
 const READ_ONLY_PERMISSIONS: Permission[] = [

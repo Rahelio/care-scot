@@ -1,4 +1,7 @@
 import { router } from "./trpc";
+import { authRouter } from "./routers/auth";
+import { signupRouter } from "./routers/signup";
+import { billingRouter } from "./routers/billing";
 import { clientsRouter } from "./routers/clients";
 import { staffRouter } from "./routers/staff";
 import { medicationRouter } from "./routers/medication";
@@ -13,6 +16,9 @@ import { reportsRouter } from "./routers/reports";
 import { financialRouter } from "./routers/financial";
 
 export const appRouter = router({
+  auth: authRouter,
+  signup: signupRouter,
+  billing: billingRouter,
   clients: clientsRouter,
   staff: staffRouter,
   medication: medicationRouter,
