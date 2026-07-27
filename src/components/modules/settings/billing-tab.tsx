@@ -84,7 +84,7 @@ export function BillingTab() {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-muted-foreground">Users</p>
-              <p className="text-2xl font-semibold">
+              <p className="text-2xl font-semibold" data-testid="seat-usage">
                 {usage.activeUserCount}{" "}
                 <span className="text-base font-normal text-muted-foreground">
                   / {usage.entitlement}

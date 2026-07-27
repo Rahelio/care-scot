@@ -459,12 +459,13 @@ This outputs something like `arn:aws:iam::123456789012:role/carescot-github-acti
 
 Go to your GitHub repository: **Settings > Secrets and variables > Actions > New repository secret**.
 
-Add these two secrets:
+Add these three secrets:
 
 | Secret Name              | Value                                                         |
 | ------------------------ | ------------------------------------------------------------- |
 | `AWS_ROLE_ARN`           | `arn:aws:iam::123456789012:role/carescot-github-actions`      |
 | `APP_RUNNER_SERVICE_ARN` | `arn:aws:apprunner:eu-west-2:123456789012:service/carescot/…` |
+| `E2E_AUTH_SECRET`        | Output of `openssl rand -base64 32` — a throwaway secret only used by the `e2e` job's disposable CI database, unrelated to the real production `AUTH_SECRET` |
 
 You can find the service ARN with:
 

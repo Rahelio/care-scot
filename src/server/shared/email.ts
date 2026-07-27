@@ -1,4 +1,5 @@
 import { SESClient, SendEmailCommand } from "@aws-sdk/client-ses";
+import { appendFileSync } from "fs";
 
 // SES_ENDPOINT is only for pointing at a local mock/dev endpoint — unset in
 // production, where the SDK talks to real AWS SES.
@@ -24,6 +25,12 @@ async function sendEmail(params: SendEmailParams): Promise<void> {
     console.warn(
       `[email] SES_FROM_ADDRESS not set — would have sent "${params.subject}" to ${params.to}:\n${params.text}`,
     );
+    // Test-only capture hook: never set outside e2e test runs. Lets tests
+    // read the actual email body (e.g. a verification/reset link) without
+    // a real inbox or scraping server logs.
+    if (process.env.EMAIL_CAPTURE_FILE) {
+      appendFileSync(process.env.EMAIL_CAPTURE_FILE, JSON.stringify(params) + "\n");
+    }
     return;
   }
 

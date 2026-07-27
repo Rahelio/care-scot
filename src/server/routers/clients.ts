@@ -1768,13 +1768,37 @@ export const clientsRouter = router({
         },
       });
 
-      // Audit trail entries for this individual's own record. Note: this
-      // does not include audit entries for their sub-records (e.g. an
-      // individual incident's own history) — a genuinely complete export
-      // would need to gather those per-entity too, which is a larger job
-      // left for a follow-up rather than blocking this phase.
+      // Audit trail entries for this individual's own record AND every
+      // sub-record fetched above — a complete SAR export needs the change
+      // history for the whole graph, not just the top-level ServiceUser row.
+      const subRecordEntityIds: { entityType: string; entityId: string }[] = [
+        { entityType: "ServiceUser", entityId: input.id },
+        ...serviceUser.contacts.map((r) => ({ entityType: "ServiceUserContact", entityId: r.id })),
+        ...serviceUser.healthcareProfessionals.map((r) => ({ entityType: "ServiceUserHealthcareProfessional", entityId: r.id })),
+        ...serviceUser.personalPlans.map((r) => ({ entityType: "PersonalPlan", entityId: r.id })),
+        ...serviceUser.riskAssessments.map((r) => ({ entityType: "RiskAssessment", entityId: r.id })),
+        ...serviceUser.consentRecords.map((r) => ({ entityType: "ConsentRecord", entityId: r.id })),
+        ...serviceUser.serviceAgreements.map((r) => ({ entityType: "ServiceAgreement", entityId: r.id })),
+        ...serviceUser.healthRecords.map((r) => ({ entityType: "HealthRecord", entityId: r.id })),
+        ...serviceUser.careVisitRecords.map((r) => ({ entityType: "CareVisitRecord", entityId: r.id })),
+        ...serviceUser.serviceUserReviews.map((r) => ({ entityType: "ServiceUserReview", entityId: r.id })),
+        ...serviceUser.medications.map((r) => ({ entityType: "ServiceUserMedication", entityId: r.id })),
+        ...serviceUser.medicationAdminRecords.map((r) => ({ entityType: "MedicationAdminRecord", entityId: r.id })),
+        ...serviceUser.medicationErrors.map((r) => ({ entityType: "MedicationError", entityId: r.id })),
+        ...serviceUser.incidents.map((r) => ({ entityType: "Incident", entityId: r.id })),
+        ...serviceUser.safeguardingConcerns.map((r) => ({ entityType: "SafeguardingConcern", entityId: r.id })),
+        ...serviceUser.complaints.map((r) => ({ entityType: "Complaint", entityId: r.id })),
+        ...serviceUser.compliments.map((r) => ({ entityType: "Compliment", entityId: r.id })),
+        ...serviceUser.satisfactionSurveys.map((r) => ({ entityType: "SatisfactionSurvey", entityId: r.id })),
+        ...serviceUser.rotaShifts.map((r) => ({ entityType: "RotaShift", entityId: r.id })),
+        ...serviceUser.carePackages.map((r) => ({ entityType: "CarePackage", entityId: r.id })),
+        ...serviceUser.billableVisits.map((r) => ({ entityType: "BillableVisit", entityId: r.id })),
+        ...serviceUser.invoiceLines.map((r) => ({ entityType: "InvoiceLine", entityId: r.id })),
+        ...serviceUser.assignedStaff.map((r) => ({ entityType: "ServiceUserStaff", entityId: r.id })),
+      ];
+
       const auditTrail = await ctx.db.auditLog.findMany({
-        where: { entityType: "ServiceUser", entityId: input.id },
+        where: { OR: subRecordEntityIds.map(({ entityType, entityId }) => ({ entityType, entityId })) },
         orderBy: { createdAt: "desc" },
       });
 
