@@ -19,6 +19,11 @@ jobs:
   lint:
     name: Lint, Type Check & Test
     runs-on: ubuntu-latest
+    env:
+      # prisma.config.ts requires DATABASE_URL to be resolvable via env() —
+      # `prisma generate` never opens a connection, so this placeholder
+      # only needs to be present, not real or reachable.
+      DATABASE_URL: postgresql://user:password@localhost:5432/placeholder
     steps:
       - uses: actions/checkout@v4
 

@@ -4,8 +4,31 @@ import { ServiceUserStatus, RiskAssessmentType, RiskLevel, ConsentType, StaffAss
 import { TRPCError } from "@trpc/server";
 import { createAuditLog } from "../middleware/audit";
 import { addressSchema, optionalEmailSchema, paginationSchema } from "../shared/validators";
+import type { OrgScopedPrismaClient } from "../middleware/org-scope";
 
 const MANAGER_ROLES = ["MANAGER", "ORG_ADMIN", "SUPER_ADMIN"] as const;
+
+/**
+ * Confirms serviceUserId resolves to a real client in the caller's own org
+ * before creating a record that references it. ctx.db's org-scoping alone
+ * only guarantees the NEW row gets the caller's own organisationId — it
+ * doesn't stop serviceUserId itself from pointing at a client belonging to
+ * a different org, which would create a row that's correctly-orged but
+ * dangles off someone else's client. Every mutation that creates a
+ * sub-record from a raw serviceUserId input must call this first.
+ */
+async function assertServiceUserInOrg(
+  db: OrgScopedPrismaClient,
+  serviceUserId: string,
+): Promise<void> {
+  const exists = await db.serviceUser.findUnique({
+    where: { id: serviceUserId },
+    select: { id: true },
+  });
+  if (!exists) {
+    throw new TRPCError({ code: "NOT_FOUND", message: "Service user not found." });
+  }
+}
 
 export const clientsRouter = router({
   // ─────────────────────────────────────────
@@ -246,6 +269,7 @@ export const clientsRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
+      await assertServiceUserInOrg(ctx.db, input.serviceUserId);
       const { email, ...rest } = input;
       return ctx.db.serviceUserContact.create({
         data: {
@@ -305,6 +329,7 @@ export const clientsRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
+      await assertServiceUserInOrg(ctx.db, input.serviceUserId);
       const { email, ...rest } = input;
       return ctx.db.serviceUserHealthcareProfessional.create({
         data: {
@@ -361,6 +386,7 @@ export const clientsRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
+      await assertServiceUserInOrg(ctx.db, input.serviceUserId);
       const latestPlan = await ctx.db.personalPlan.findFirst({
         where: { serviceUserId: input.serviceUserId },
         orderBy: { planVersion: "desc" },
@@ -544,6 +570,7 @@ export const clientsRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
+      await assertServiceUserInOrg(ctx.db, input.serviceUserId);
       // Supersede existing assessment of the same type
       await ctx.db.riskAssessment.updateMany({
         where: {
@@ -634,6 +661,7 @@ export const clientsRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
+      await assertServiceUserInOrg(ctx.db, input.serviceUserId);
       return ctx.db.consentRecord.create({
         data: { ...input, organisationId: ctx.user.organisationId, createdBy: ctx.user.id, updatedBy: ctx.user.id },
       });
@@ -674,6 +702,7 @@ export const clientsRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
+      await assertServiceUserInOrg(ctx.db, input.serviceUserId);
       return ctx.db.serviceAgreement.create({
         data: { ...input, organisationId: ctx.user.organisationId, createdBy: ctx.user.id, updatedBy: ctx.user.id },
       });
@@ -712,6 +741,7 @@ export const clientsRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
+      await assertServiceUserInOrg(ctx.db, input.serviceUserId);
       return ctx.db.healthRecord.create({
         data: {
           ...input,
@@ -847,6 +877,7 @@ export const clientsRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
+      await assertServiceUserInOrg(ctx.db, input.serviceUserId);
       // Resolve staff member: use provided or look up from current user
       let staffMemberId = input.staffMemberId;
       if (!staffMemberId) {
@@ -981,6 +1012,7 @@ export const clientsRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
+      await assertServiceUserInOrg(ctx.db, input.serviceUserId);
       return ctx.db.serviceUserReview.create({
         data: {
           ...input,
@@ -1150,6 +1182,7 @@ export const clientsRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
+      await assertServiceUserInOrg(ctx.db, input.serviceUserId);
       await ctx.db.staffMember.findUniqueOrThrow({
         where: { id: input.staffMemberId },
       });
@@ -1263,6 +1296,7 @@ export const clientsRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
+      await assertServiceUserInOrg(ctx.db, input.serviceUserId);
       let fields: {
         professionalName: string;
         role?: string;
