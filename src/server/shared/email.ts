@@ -1,5 +1,6 @@
 import { SESClient, SendEmailCommand } from "@aws-sdk/client-ses";
-import { appendFileSync } from "fs";
+import { appendFileSync, mkdirSync } from "fs";
+import { dirname } from "path";
 
 // SES_ENDPOINT is only for pointing at a local mock/dev endpoint — unset in
 // production, where the SDK talks to real AWS SES.
@@ -29,6 +30,10 @@ async function sendEmail(params: SendEmailParams): Promise<void> {
     // read the actual email body (e.g. a verification/reset link) without
     // a real inbox or scraping server logs.
     if (process.env.EMAIL_CAPTURE_FILE) {
+      // e2e/.emails/ is gitignored, so it won't exist on a fresh checkout
+      // (CI or a new clone) — create it on demand rather than requiring a
+      // separate setup step.
+      mkdirSync(dirname(process.env.EMAIL_CAPTURE_FILE), { recursive: true });
       appendFileSync(process.env.EMAIL_CAPTURE_FILE, JSON.stringify(params) + "\n");
     }
     return;
