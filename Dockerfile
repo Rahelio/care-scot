@@ -42,6 +42,12 @@ COPY --from=builder /app/public ./public
 # Copy Prisma schema + migrations (needed for migrate deploy)
 COPY --from=builder /app/prisma ./prisma
 
+# Copy prisma.config.ts — schema.prisma's datasource block has no url of its
+# own in Prisma 7; it's resolved entirely via this root-level config file's
+# env("DATABASE_URL") at runtime, so `prisma migrate deploy` in the CMD below
+# fails without it.
+COPY --from=builder /app/prisma.config.ts ./prisma.config.ts
+
 # Copy Next.js standalone output (includes server.js + traced node_modules)
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
