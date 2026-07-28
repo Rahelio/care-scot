@@ -11,6 +11,11 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
+# prisma.config.ts requires DATABASE_URL to be resolvable via env() —
+# `prisma generate` never opens a connection, so this placeholder only
+# needs to be present, not real or reachable. Scoped to this build stage
+# only; it isn't copied into the runner image.
+ENV DATABASE_URL=postgresql://user:password@localhost:5432/placeholder
 RUN npx prisma generate
 RUN npm run build
 
