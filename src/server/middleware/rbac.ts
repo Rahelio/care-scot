@@ -26,7 +26,9 @@ export type Permission =
   | "reports.view_all"
   | "settings.manage"
   | "users.manage"
-  | "billing.manage";
+  | "billing.manage"
+  | "rota.read"
+  | "rota.manage";
 
 // ─── Role → permissions map ────────────────────────────────────────────────
 
@@ -51,6 +53,7 @@ const OFFICE_STAFF_PERMISSIONS: Permission[] = [
   "staff.read",
   "complaints.create",
   "complaints.read",
+  "rota.read",
 ];
 
 const MANAGER_PERMISSIONS: Permission[] = [
@@ -61,6 +64,7 @@ const MANAGER_PERMISSIONS: Permission[] = [
   "reports.view_all",
   "incidents.manage",
   "complaints.manage",
+  "rota.manage",
 ];
 
 const ORG_ADMIN_PERMISSIONS: Permission[] = [
@@ -92,6 +96,8 @@ const ALL_PERMISSIONS: Permission[] = [
   "settings.manage",
   "users.manage",
   "billing.manage",
+  "rota.read",
+  "rota.manage",
 ];
 
 const READ_ONLY_PERMISSIONS: Permission[] = [
@@ -102,6 +108,7 @@ const READ_ONLY_PERMISSIONS: Permission[] = [
   "staff.read",
   "complaints.read",
   "reports.view_all",
+  "rota.read",
 ];
 
 const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {

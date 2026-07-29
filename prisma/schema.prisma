@@ -455,18 +455,10 @@ enum HolidayRegion {
   ALL
 }
 
-enum ShiftType {
-  REGULAR
-  ON_CALL
-  TRAINING
-  ADMIN
-}
-
-enum ShiftStatus {
-  SCHEDULED
-  CONFIRMED
-  IN_PROGRESS
-  COMPLETED
+enum RotaVisitStatus {
+  UNASSIGNED
+  PARTIALLY_ASSIGNED
+  ASSIGNED
   CANCELLED
 }
 
@@ -506,7 +498,9 @@ model Organisation {
   satisfactionSurveys   SatisfactionSurvey[]
   annualReturns         AnnualReturn[]
   files                 File[]
-  rotaShifts            RotaShift[]
+  rotaVisits            RotaVisit[]
+  rotaVisitAssignments  RotaVisitAssignment[]
+  rotaAvailability      RotaAvailability[]
   notifications         Notification[]
   funders               Funder[]
   rateCards             RateCard[]
@@ -569,6 +563,7 @@ model User {
   uploadedFiles                  File[]
   notifications                  Notification[]
   approvedBillableVisits         BillableVisit[]                @relation("BillableVisitApprovedBy")
+  rotaAssignmentsMade            RotaVisitAssignment[]          @relation("RotaAssignmentAssignedBy")
 
   @@map("users")
 }
@@ -757,7 +752,7 @@ model ServiceUser {
   complaints              Complaint[]
   compliments             Compliment[]
   satisfactionSurveys     SatisfactionSurvey[]
-  rotaShifts              RotaShift[]
+  rotaVisits              RotaVisit[]
   carePackages            CarePackage[]
   billableVisits          BillableVisit[]
   invoiceLines            InvoiceLine[]
@@ -974,6 +969,7 @@ model CareVisitRecord {
   actualEnd             DateTime? @map("actual_end") @db.Timestamptz()
   staffMemberId         String    @map("staff_member_id") @db.Uuid
   carePackageId         String?   @map("care_package_id") @db.Uuid
+  rotaVisitId           String?   @map("rota_visit_id") @db.Uuid
   mileageMiles          Decimal?  @map("mileage_miles") @db.Decimal(8, 2)
   tasksCompleted        Json?     @map("tasks_completed") @db.JsonB
   wellbeingObservations String?   @map("wellbeing_observations") @db.Text
@@ -992,6 +988,7 @@ model CareVisitRecord {
   staffMember     StaffMember    @relation(fields: [staffMemberId], references: [id])
   signedOffByUser User?          @relation("CareVisitSignedOffBy", fields: [signedOffBy], references: [id])
   carePackage     CarePackage?   @relation(fields: [carePackageId], references: [id])
+  rotaVisit       RotaVisit?     @relation(fields: [rotaVisitId], references: [id])
   billableVisit   BillableVisit?
 
   @@map("care_visit_records")
@@ -1094,7 +1091,7 @@ model StaffMember {
   witnessedMeds          MedicationAdminRecord[]   @relation("MedAdminWitness")
   reportedMedErrors      MedicationError[]         @relation("MedErrorReportedBy")
   staffIncidents         Incident[]
-  rotaShifts             RotaShift[]
+  rotaVisitAssignments   RotaVisitAssignment[]
   rotaAvailability       RotaAvailability[]
   serviceUserAssignments ServiceUserStaff[]
 
@@ -1763,45 +1760,73 @@ model AnnualReturn {
 }
 
 // ─────────────────────────────────────────────
-// MODULE: ROTA (STUB — Placeholder for integration)
+// MODULE: ROTA
 // ─────────────────────────────────────────────
 
-model RotaShift {
-  id             String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  organisationId String      @map("organisation_id") @db.Uuid
-  staffMemberId  String      @map("staff_member_id") @db.Uuid
-  serviceUserId  String?     @map("service_user_id") @db.Uuid
-  shiftDate      DateTime    @map("shift_date") @db.Date
-  startTime      String      @map("start_time") // e.g. "08:00"
-  endTime        String      @map("end_time")
-  shiftType      ShiftType   @map("shift_type")
-  status         ShiftStatus @default(SCHEDULED)
-  notes          String?     @db.Text
-  createdAt      DateTime    @default(now()) @map("created_at") @db.Timestamptz()
-  updatedAt      DateTime    @updatedAt @map("updated_at") @db.Timestamptz()
+model RotaAvailability {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organisationId String    @map("organisation_id") @db.Uuid
+  staffMemberId  String    @map("staff_member_id") @db.Uuid
+  dayOfWeek      DayOfWeek @map("day_of_week")
+  availableFrom  String    @map("available_from") // e.g. "08:00"
+  availableTo    String    @map("available_to")
+  isAvailable    Boolean   @default(true) @map("is_available")
+  effectiveFrom  DateTime  @map("effective_from") @db.Date
+  effectiveTo    DateTime? @map("effective_to") @db.Date
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt      DateTime  @updatedAt @map("updated_at") @db.Timestamptz()
 
   organisation Organisation @relation(fields: [organisationId], references: [id])
   staffMember  StaffMember  @relation(fields: [staffMemberId], references: [id])
-  serviceUser  ServiceUser? @relation(fields: [serviceUserId], references: [id])
 
-  @@map("rota_shifts")
+  @@index([organisationId, staffMemberId])
+  @@map("rota_availability")
 }
 
-model RotaAvailability {
-  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  staffMemberId String    @map("staff_member_id") @db.Uuid
-  dayOfWeek     Int       @map("day_of_week") // 0 = Sunday, 6 = Saturday
-  availableFrom String    @map("available_from") // e.g. "08:00"
-  availableTo   String    @map("available_to")
-  isAvailable   Boolean   @default(true) @map("is_available")
-  effectiveFrom DateTime  @map("effective_from") @db.Date
-  effectiveTo   DateTime? @map("effective_to") @db.Date
-  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz()
-  updatedAt     DateTime  @updatedAt @map("updated_at") @db.Timestamptz()
+model RotaVisit {
+  id             String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organisationId String          @map("organisation_id") @db.Uuid
+  serviceUserId  String          @map("service_user_id") @db.Uuid
+  visitDate      DateTime        @map("visit_date") @db.Date
+  startTime      String          @map("start_time") // e.g. "08:00"
+  endTime        String          @map("end_time")
+  carersRequired Int             @default(1) @map("carers_required")
+  status         RotaVisitStatus @default(UNASSIGNED)
+  notes          String?         @db.Text
+  createdAt      DateTime        @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt      DateTime        @updatedAt @map("updated_at") @db.Timestamptz()
+  createdBy      String?         @map("created_by") @db.Uuid
+  updatedBy      String?         @map("updated_by") @db.Uuid
 
-  staffMember StaffMember @relation(fields: [staffMemberId], references: [id])
+  organisation     Organisation          @relation(fields: [organisationId], references: [id])
+  serviceUser      ServiceUser           @relation(fields: [serviceUserId], references: [id])
+  assignments      RotaVisitAssignment[]
+  careVisitRecords CareVisitRecord[]
 
-  @@map("rota_availability")
+  @@index([organisationId, visitDate])
+  @@index([organisationId, serviceUserId, visitDate])
+  @@map("rota_visits")
+}
+
+model RotaVisitAssignment {
+  id                  String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organisationId      String   @map("organisation_id") @db.Uuid
+  rotaVisitId         String   @map("rota_visit_id") @db.Uuid
+  staffMemberId       String   @map("staff_member_id") @db.Uuid
+  hasConflictOverride Boolean  @default(false) @map("has_conflict_override")
+  conflictDetails     Json?    @map("conflict_details") @db.JsonB
+  assignedBy          String?  @map("assigned_by") @db.Uuid
+  createdAt           DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt           DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+
+  organisation   Organisation @relation(fields: [organisationId], references: [id])
+  rotaVisit      RotaVisit    @relation(fields: [rotaVisitId], references: [id], onDelete: Cascade)
+  staffMember    StaffMember  @relation(fields: [staffMemberId], references: [id])
+  assignedByUser User?        @relation("RotaAssignmentAssignedBy", fields: [assignedBy], references: [id])
+
+  @@unique([rotaVisitId, staffMemberId])
+  @@index([organisationId, staffMemberId])
+  @@map("rota_visit_assignments")
 }
 
 // ─────────────────────────────────────────────

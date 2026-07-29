@@ -15,6 +15,7 @@ const CLIENT_TABS = [
   { label: "Reviews", suffix: "/reviews" },
   { label: "Timeline", suffix: "/timeline" },
   { label: "Visits", suffix: "/visits" },
+  { label: "Rota", suffix: "/rota" },
   { label: "Financial", suffix: "/financial" },
 ];
 

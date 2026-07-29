@@ -11,6 +11,7 @@ const STAFF_TABS = [
   { label: "Training", suffix: "/training" },
   { label: "Supervision", suffix: "/supervision" },
   { label: "Appraisals", suffix: "/appraisals" },
+  { label: "Availability", suffix: "/availability" },
   { label: "Absence", suffix: "/absence" },
   { label: "Health", suffix: "/health" },
   { label: "Disciplinary", suffix: "/disciplinary" },

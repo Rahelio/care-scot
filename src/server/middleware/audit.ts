@@ -9,7 +9,6 @@ const AUDIT_EXCLUDED_MODELS = new Set([
   "Account",
   "Session",
   "VerificationToken",
-  "RotaAvailability",
   "Organisation",
 ]);
 

@@ -2,7 +2,7 @@ import { prisma } from "@/lib/prisma";
 
 /**
  * Prisma model names (PascalCase) that carry an `organisationId` column.
- * Models without it (Organisation, PolicyAcknowledgment, RotaAvailability,
+ * Models without it (Organisation, PolicyAcknowledgment,
  * Account, Session, VerificationToken) are passed through untouched.
  *
  * Kept in sync against the schema by grepping every model with an
@@ -51,7 +51,9 @@ export const ORG_SCOPED_MODELS = new Set([
   "SatisfactionSurvey",
   "AnnualReturn",
   "File",
-  "RotaShift",
+  "RotaVisit",
+  "RotaVisitAssignment",
+  "RotaAvailability",
   "AuditLog",
   "User",
   "Funder",

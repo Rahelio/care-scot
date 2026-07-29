@@ -4,31 +4,9 @@ import { ServiceUserStatus, RiskAssessmentType, RiskLevel, ConsentType, StaffAss
 import { TRPCError } from "@trpc/server";
 import { createAuditLog } from "../middleware/audit";
 import { addressSchema, optionalEmailSchema, paginationSchema } from "../shared/validators";
-import type { OrgScopedPrismaClient } from "../middleware/org-scope";
+import { assertServiceUserInOrg } from "../shared/org-guards";
 
 const MANAGER_ROLES = ["MANAGER", "ORG_ADMIN", "SUPER_ADMIN"] as const;
-
-/**
- * Confirms serviceUserId resolves to a real client in the caller's own org
- * before creating a record that references it. ctx.db's org-scoping alone
- * only guarantees the NEW row gets the caller's own organisationId — it
- * doesn't stop serviceUserId itself from pointing at a client belonging to
- * a different org, which would create a row that's correctly-orged but
- * dangles off someone else's client. Every mutation that creates a
- * sub-record from a raw serviceUserId input must call this first.
- */
-async function assertServiceUserInOrg(
-  db: OrgScopedPrismaClient,
-  serviceUserId: string,
-): Promise<void> {
-  const exists = await db.serviceUser.findUnique({
-    where: { id: serviceUserId },
-    select: { id: true },
-  });
-  if (!exists) {
-    throw new TRPCError({ code: "NOT_FOUND", message: "Service user not found." });
-  }
-}
 
 export const clientsRouter = router({
   // ─────────────────────────────────────────
@@ -1790,7 +1768,7 @@ export const clientsRouter = router({
           complaints: true,
           compliments: true,
           satisfactionSurveys: true,
-          rotaShifts: true,
+          rotaVisits: true,
           carePackages: true,
           billableVisits: true,
           invoiceLines: true,
@@ -1824,7 +1802,7 @@ export const clientsRouter = router({
         ...serviceUser.complaints.map((r) => ({ entityType: "Complaint", entityId: r.id })),
         ...serviceUser.compliments.map((r) => ({ entityType: "Compliment", entityId: r.id })),
         ...serviceUser.satisfactionSurveys.map((r) => ({ entityType: "SatisfactionSurvey", entityId: r.id })),
-        ...serviceUser.rotaShifts.map((r) => ({ entityType: "RotaShift", entityId: r.id })),
+        ...serviceUser.rotaVisits.map((r) => ({ entityType: "RotaVisit", entityId: r.id })),
         ...serviceUser.carePackages.map((r) => ({ entityType: "CarePackage", entityId: r.id })),
         ...serviceUser.billableVisits.map((r) => ({ entityType: "BillableVisit", entityId: r.id })),
         ...serviceUser.invoiceLines.map((r) => ({ entityType: "InvoiceLine", entityId: r.id })),
