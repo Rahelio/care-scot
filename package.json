@@ -16,8 +16,9 @@
     "db:studio": "prisma studio",
     "db:seed": "tsx scripts/seed.ts",
     "db:seed-demo": "tsx scripts/seed-demo.ts",
+    "db:seed-rota": "tsx scripts/seed-rota-demo.ts",
     "db:reset": "prisma migrate reset --force && tsx scripts/seed.ts",
-    "db:reset-demo": "prisma migrate reset --force && tsx scripts/seed.ts && tsx scripts/seed-demo.ts",
+    "db:reset-demo": "prisma migrate reset --force && tsx scripts/seed.ts && tsx scripts/seed-demo.ts && tsx scripts/seed-rota-demo.ts",
     "db:setup-prod": "tsx scripts/setup-production.ts"
   },
   "dependencies": {

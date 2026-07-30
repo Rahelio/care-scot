@@ -37,6 +37,7 @@ const schema = z.object({
   addressLine2: z.string().optional(),
   city: z.string().optional(),
   postcode: z.string().optional(),
+  area: z.string().optional(),
   jobTitle: z.string().optional(),
   roleType: z.enum([
     "CARER", "SENIOR_CARER", "NURSE", "COORDINATOR", "MANAGER", "ADMIN", "OTHER",
@@ -243,6 +244,22 @@ export function StaffForm({ staffId, initialValues }: StaffFormProps) {
                   <FormControl>
                     <Input {...field} value={field.value ?? ""} className="uppercase" />
                   </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="area"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Area / Locality</FormLabel>
+                  <FormControl>
+                    <Input {...field} value={field.value ?? ""} placeholder="e.g. Inverness East" />
+                  </FormControl>
+                  <p className="text-xs text-muted-foreground">
+                    Used for grouping rota visits into rounds — not the postal city.
+                  </p>
                   <FormMessage />
                 </FormItem>
               )}

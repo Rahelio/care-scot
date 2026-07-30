@@ -17,6 +17,7 @@ export interface StaffOption {
   id: string;
   firstName: string;
   lastName: string;
+  area?: string | null;
 }
 
 export interface AvailabilityRow {

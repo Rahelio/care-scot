@@ -712,6 +712,7 @@ model ServiceUser {
   addressLine2            String?           @map("address_line2")
   city                    String?
   postcode                String?
+  area                    String? // free-text rota scheduling area — distinct from postal city
   phonePrimary            String?           @map("phone_primary")
   phoneSecondary          String?           @map("phone_secondary")
   email                   String?
@@ -1049,6 +1050,7 @@ model StaffMember {
   addressLine2         String?        @map("address_line2")
   city                 String?
   postcode             String?
+  area                 String? // free-text rota scheduling area — distinct from postal city
   phone                String?
   email                String?
   niNumber             String?        @map("ni_number") // stored encrypted at app layer

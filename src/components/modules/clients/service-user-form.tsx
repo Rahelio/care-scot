@@ -41,6 +41,7 @@ const schema = z.object({
   addressLine2: z.string().optional(),
   city: z.string().optional(),
   postcode: z.string().optional(),
+  area: z.string().optional(),
   phonePrimary: z.string().optional(),
   phoneSecondary: z.string().optional(),
   email: z.string().email("Invalid email").optional().or(z.literal("")),
@@ -266,6 +267,22 @@ export function ServiceUserForm({ defaultValues, mode, clientId }: ServiceUserFo
                   <FormControl>
                     <Input {...field} className="uppercase" />
                   </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="area"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Area / Locality</FormLabel>
+                  <FormControl>
+                    <Input {...field} placeholder="e.g. Inverness East" />
+                  </FormControl>
+                  <p className="text-xs text-muted-foreground">
+                    Used for grouping rota visits into rounds — not the postal city.
+                  </p>
                   <FormMessage />
                 </FormItem>
               )}
