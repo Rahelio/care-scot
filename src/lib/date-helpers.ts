@@ -46,6 +46,12 @@ export function toDateOnly(date: Date): Date {
   return new Date(`${y}-${m}-${d}`);
 }
 
+const DAY_OF_WEEK_BY_JS_DAY = ["SUNDAY", "MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"];
+
+export function dayOfWeekName(date: Date): string {
+  return DAY_OF_WEEK_BY_JS_DAY[date.getDay()];
+}
+
 export function isSameDay(a: Date, b: Date): boolean {
   return (
     a.getFullYear() === b.getFullYear() &&

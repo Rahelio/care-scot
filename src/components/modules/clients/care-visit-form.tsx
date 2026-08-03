@@ -62,9 +62,20 @@ const DEFAULT_TASKS = [
 interface CareVisitFormProps {
   serviceUserId: string;
   clientName: string;
+  rotaVisitId?: string;
+  initialVisitDate?: string;
+  initialScheduledStart?: string;
+  initialScheduledEnd?: string;
 }
 
-export function CareVisitForm({ serviceUserId, clientName }: CareVisitFormProps) {
+export function CareVisitForm({
+  serviceUserId,
+  clientName,
+  rotaVisitId,
+  initialVisitDate,
+  initialScheduledStart,
+  initialScheduledEnd,
+}: CareVisitFormProps) {
   const router = useRouter();
   const [newTask, setNewTask] = useState("");
   const utils = trpc.useUtils();
@@ -72,9 +83,9 @@ export function CareVisitForm({ serviceUserId, clientName }: CareVisitFormProps)
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: {
-      visitDate: new Date().toISOString().split("T")[0],
-      scheduledStart: "",
-      scheduledEnd: "",
+      visitDate: initialVisitDate ?? new Date().toISOString().split("T")[0],
+      scheduledStart: initialScheduledStart ?? "",
+      scheduledEnd: initialScheduledEnd ?? "",
       refusedCare: false,
       tasksCompleted: DEFAULT_TASKS.map((task) => ({
         task,
@@ -106,6 +117,7 @@ export function CareVisitForm({ serviceUserId, clientName }: CareVisitFormProps)
       ...values,
       visitDate: new Date(values.visitDate),
       tasksCompleted: values.tasksCompleted?.filter((t) => t.task.trim()),
+      ...(rotaVisitId ? { rotaVisitId } : {}),
     });
   }
 
@@ -123,6 +135,12 @@ export function CareVisitForm({ serviceUserId, clientName }: CareVisitFormProps)
           <h2 className="text-lg font-semibold">Log Care Visit</h2>
           <p className="text-sm text-muted-foreground">For {clientName}</p>
         </div>
+
+        {rotaVisitId && (
+          <div className="rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-800">
+            Pre-filled from today&apos;s rota — date and time carried over from the scheduled visit.
+          </div>
+        )}
 
         <Card>
           <CardHeader>

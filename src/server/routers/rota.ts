@@ -73,6 +73,37 @@ async function fetchConflictContext(
 }
 
 /**
+ * A client can only be in one place at a time. Two carers attending the
+ * same visit together (a double-up, or a trainee shadowing) is represented
+ * by carersRequired on a single RotaVisit, never by two separate
+ * overlapping visit rows for the same client — so unlike staff conflicts
+ * (advisory, since covering an emergency sometimes means accepting a clash),
+ * this is a hard data-integrity rule with no override.
+ */
+async function assertNoOverlappingClientVisit(
+  db: OrgScopedPrismaClient,
+  params: { serviceUserId: string; visitDate: Date; startTime: string; endTime: string },
+  excludeVisitId?: string,
+): Promise<void> {
+  const sameDayVisits = await db.rotaVisit.findMany({
+    where: {
+      serviceUserId: params.serviceUserId,
+      visitDate: params.visitDate,
+      status: { not: "CANCELLED" },
+      ...(excludeVisitId ? { id: { not: excludeVisitId } } : {}),
+    },
+    select: { startTime: true, endTime: true },
+  });
+  const conflict = sameDayVisits.find((v) => params.startTime < v.endTime && v.startTime < params.endTime);
+  if (conflict) {
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message: `This client already has a visit ${conflict.startTime}–${conflict.endTime} that day. If two carers need to attend together, set "carers required" to 2 on one visit instead of creating a second one.`,
+    });
+  }
+}
+
+/**
  * Pure, in-memory conflict check against an already-fetched context. Per
  * product decision, conflicts are advisory only — callers decide whether to
  * block or let the admin override, this just reports what it finds.
@@ -283,6 +314,7 @@ export const rotaRouter = router({
       )
       .mutation(async ({ ctx, input }) => {
         await assertServiceUserInOrg(ctx.db, input.serviceUserId);
+        await assertNoOverlappingClientVisit(ctx.db, input);
         return ctx.db.rotaVisit.create({
           data: {
             ...input,
@@ -291,6 +323,84 @@ export const rotaRouter = router({
             updatedBy: ctx.user.id,
           },
         });
+      }),
+
+    /**
+     * Generates one visit per matching date in [rangeStart, rangeEnd] —
+     * a one-off convenience, not a persisted recurring template. Safely
+     * re-runnable: dates where the client already has an overlapping visit
+     * are skipped, not duplicated or double-booked. Individual creates (not
+     * createMany) so every row still goes through audit logging, matching
+     * this file's other bulk writes.
+     */
+    createRecurring: rotaManageProcedure
+      .input(
+        z.object({
+          serviceUserId: z.string().min(1),
+          daysOfWeek: z.array(z.nativeEnum(DayOfWeek)).min(1),
+          startTime: z.string().min(1),
+          endTime: z.string().min(1),
+          carersRequired: z.number().int().min(1).optional(),
+          notes: z.string().optional(),
+          rangeStart: z.date(),
+          rangeEnd: z.date(),
+        }),
+      )
+      .mutation(async ({ ctx, input }) => {
+        await assertServiceUserInOrg(ctx.db, input.serviceUserId);
+
+        const days = new Set(input.daysOfWeek);
+        const candidateDates: Date[] = [];
+        for (
+          let d = new Date(input.rangeStart);
+          d.getTime() <= input.rangeEnd.getTime();
+          d = new Date(d.getTime() + 24 * 60 * 60 * 1000)
+        ) {
+          if (days.has(DAY_OF_WEEK_BY_JS_DAY[d.getUTCDay()])) candidateDates.push(new Date(d));
+        }
+        if (candidateDates.length === 0) {
+          return { createdCount: 0, skippedCount: 0 };
+        }
+
+        // Skip any date where the client already has an overlapping
+        // non-cancelled visit — not just an exact time match — so this can
+        // never manufacture the same double-booking a single create() call
+        // would reject (see assertNoOverlappingClientVisit).
+        const existing = await ctx.db.rotaVisit.findMany({
+          where: {
+            serviceUserId: input.serviceUserId,
+            visitDate: { in: candidateDates },
+            status: { not: "CANCELLED" },
+          },
+          select: { visitDate: true, startTime: true, endTime: true },
+        });
+        const existingByDate = new Map<number, { startTime: string; endTime: string }[]>();
+        for (const v of existing) {
+          const key = v.visitDate.getTime();
+          existingByDate.set(key, [...(existingByDate.get(key) ?? []), v]);
+        }
+        const toCreate = candidateDates.filter((d) => {
+          const dayExisting = existingByDate.get(d.getTime()) ?? [];
+          return !dayExisting.some((v) => input.startTime < v.endTime && v.startTime < input.endTime);
+        });
+
+        for (const visitDate of toCreate) {
+          await ctx.db.rotaVisit.create({
+            data: {
+              serviceUserId: input.serviceUserId,
+              organisationId: ctx.user.organisationId,
+              visitDate,
+              startTime: input.startTime,
+              endTime: input.endTime,
+              carersRequired: input.carersRequired ?? 1,
+              notes: input.notes,
+              createdBy: ctx.user.id,
+              updatedBy: ctx.user.id,
+            },
+          });
+        }
+
+        return { createdCount: toCreate.length, skippedCount: candidateDates.length - toCreate.length };
       }),
 
     update: rotaManageProcedure
@@ -308,11 +418,21 @@ export const rotaRouter = router({
         const { id, ...data } = input;
         const record = await ctx.prisma.rotaVisit.findUniqueOrThrow({
           where: { id },
-          select: { organisationId: true },
+          select: { organisationId: true, serviceUserId: true, visitDate: true, startTime: true, endTime: true },
         });
         if (record.organisationId !== ctx.user.organisationId) {
           throw new TRPCError({ code: "FORBIDDEN" });
         }
+        await assertNoOverlappingClientVisit(
+          ctx.db,
+          {
+            serviceUserId: record.serviceUserId,
+            visitDate: data.visitDate ?? record.visitDate,
+            startTime: data.startTime ?? record.startTime,
+            endTime: data.endTime ?? record.endTime,
+          },
+          id,
+        );
         const updated = await ctx.db.rotaVisit.update({
           where: { id },
           data: { ...data, updatedBy: ctx.user.id },
@@ -382,8 +502,14 @@ export const rotaRouter = router({
           { staffMemberId: input.staffMemberId, ...visit },
           input.rotaVisitId,
         );
+        // A staff member can't physically attend two overlapping visits —
+        // unlike LEAVE/OUTSIDE_AVAILABILITY (which an admin might reasonably
+        // override for emergency cover), DOUBLE_BOOKED is never overridable.
+        if (conflicts.some((c) => c.type === "DOUBLE_BOOKED")) {
+          return { applied: false as const, conflicts, hardBlocked: true as const };
+        }
         if (conflicts.length > 0 && !input.overrideConflict) {
-          return { applied: false as const, conflicts };
+          return { applied: false as const, conflicts, hardBlocked: false as const };
         }
 
         const existing = await ctx.db.rotaVisitAssignment.findUnique({
@@ -462,8 +588,15 @@ export const rotaRouter = router({
           }
         }
 
+        // Same rule as assign(): a DOUBLE_BOOKED conflict anywhere in the
+        // batch blocks the whole batch, with no override — a person can't
+        // physically attend two overlapping visits, unlike LEAVE/
+        // OUTSIDE_AVAILABILITY which an admin might reasonably accept.
+        if (pairConflicts.some((c) => c.conflicts.some((x) => x.type === "DOUBLE_BOOKED"))) {
+          return { applied: false as const, conflicts: pairConflicts, hardBlocked: true as const };
+        }
         if (pairConflicts.length > 0 && !input.overrideConflict) {
-          return { applied: false as const, conflicts: pairConflicts };
+          return { applied: false as const, conflicts: pairConflicts, hardBlocked: false as const };
         }
 
         const affectedVisitIds = new Set<string>();
@@ -670,6 +803,55 @@ export const rotaRouter = router({
           await recomputeVisitStatus(ctx.db, id);
         }
         return { ok: true, unassignedCount: assignments.length };
+      }),
+  }),
+
+  // ── Self-service (carer's own schedule) ────
+  // Deliberately plain protectedProcedure, not rotaReadProcedure — this is
+  // "your own data", not a rota.read-gated view, matching the ctx.user.
+  // staffMemberId self-guard convention already used in compliance.ts /
+  // medication.ts rather than a new permission.
+  mine: router({
+    getForRange: protectedProcedure
+      .input(z.object({ from: z.date(), to: z.date() }))
+      .query(async ({ ctx, input }) => {
+        if (!ctx.user.staffMemberId) {
+          throw new TRPCError({
+            code: "FORBIDDEN",
+            message: "No staff member record linked to your account. Contact a manager.",
+          });
+        }
+        const staffMemberId = ctx.user.staffMemberId;
+        const [visits, availability, leave] = await Promise.all([
+          ctx.db.rotaVisit.findMany({
+            where: {
+              visitDate: { gte: input.from, lte: input.to },
+              assignments: { some: { staffMemberId } },
+            },
+            orderBy: [{ visitDate: "asc" }, { startTime: "asc" }],
+            include: {
+              serviceUser: { select: { id: true, firstName: true, lastName: true, area: true } },
+              assignments: {
+                include: { staffMember: { select: { id: true, firstName: true, lastName: true } } },
+              },
+            },
+          }),
+          ctx.db.rotaAvailability.findMany({
+            where: {
+              staffMemberId,
+              effectiveFrom: { lte: input.to },
+              OR: [{ effectiveTo: null }, { effectiveTo: { gte: input.from } }],
+            },
+          }),
+          ctx.db.staffAbsenceRecord.findMany({
+            where: {
+              staffMemberId,
+              startDate: { lte: input.to },
+              OR: [{ endDate: null }, { endDate: { gte: input.from } }],
+            },
+          }),
+        ]);
+        return { visits, availability, leave };
       }),
   }),
 

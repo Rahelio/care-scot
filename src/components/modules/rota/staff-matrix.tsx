@@ -45,7 +45,7 @@ interface Props {
   leave: LeaveRow[];
 }
 
-function coversDate(effectiveFrom: Date, effectiveTo: Date | null, day: Date): boolean {
+export function coversDate(effectiveFrom: Date, effectiveTo: Date | null, day: Date): boolean {
   return new Date(effectiveFrom) <= day && (!effectiveTo || new Date(effectiveTo) >= day);
 }
 

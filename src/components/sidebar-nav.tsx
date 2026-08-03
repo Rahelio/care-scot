@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { signOut } from "next-auth/react";
+import type { UserRole } from "@prisma/client";
 import {
   Users,
   UserCog,
@@ -11,6 +12,7 @@ import {
   AlertTriangle,
   ShieldCheck,
   Calendar,
+  CalendarClock,
   LogOut,
   LayoutDashboard,
   Menu,
@@ -30,7 +32,7 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet";
 
-const NAV_ITEMS = [
+const NAV_ITEMS: { label: string; href: string; icon: typeof Users; roles?: UserRole[] }[] = [
   { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   { label: "Tasks", href: "/tasks", icon: ClipboardList },
   { label: "Clients", href: "/clients", icon: Users },
@@ -40,6 +42,7 @@ const NAV_ITEMS = [
   { label: "Compliance", href: "/compliance", icon: ShieldCheck },
   { label: "Financial", href: "/financial", icon: PoundSterling },
   { label: "Rota", href: "/rota", icon: Calendar },
+  { label: "My Schedule", href: "/my-schedule", icon: CalendarClock, roles: ["CARER", "SENIOR_CARER"] },
   { label: "Reports", href: "/reports", icon: BarChart2 },
   { label: "Notifications", href: "/notifications", icon: Bell },
   { label: "Settings", href: "/settings", icon: Settings },
@@ -62,14 +65,17 @@ interface SidebarNavProps {
 
 function NavLinks({
   pathname,
+  userRole,
   onNavigate,
 }: {
   pathname: string;
+  userRole: string;
   onNavigate?: () => void;
 }) {
+  const items = NAV_ITEMS.filter((item) => !item.roles || item.roles.includes(userRole as UserRole));
   return (
     <nav className="flex-1 overflow-y-auto py-3 px-3 space-y-0.5">
-      {NAV_ITEMS.map((item) => {
+      {items.map((item) => {
         const isActive =
           item.href === "/dashboard"
             ? pathname === "/dashboard"
@@ -139,7 +145,7 @@ export function SidebarNav({ userName, userRole }: SidebarNavProps) {
   return (
     <aside className="hidden md:flex w-64 flex-col border-r bg-background shrink-0">
       <SidebarLogo />
-      <NavLinks pathname={pathname} />
+      <NavLinks pathname={pathname} userRole={userRole} />
       <UserFooter userName={userName} userRole={userRole} />
     </aside>
   );
@@ -165,7 +171,7 @@ export function MobileNav({ userName, userRole }: SidebarNavProps) {
       <SheetContent side="left" className="w-64 p-0 flex flex-col" showCloseButton={false}>
         <SheetTitle className="sr-only">Navigation</SheetTitle>
         <SidebarLogo />
-        <NavLinks pathname={pathname} onNavigate={() => setOpen(false)} />
+        <NavLinks pathname={pathname} userRole={userRole} onNavigate={() => setOpen(false)} />
         <UserFooter userName={userName} userRole={userRole} />
       </SheetContent>
     </Sheet>

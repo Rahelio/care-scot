@@ -8,8 +8,11 @@ import { Input } from "@/components/ui/input";
 import { getMonday, addDays, formatLong, startOfDay, toDateOnly } from "@/lib/date-helpers";
 import { DayVisitAssignmentList } from "@/components/modules/rota/day-visit-assignment-list";
 import { StaffMatrix } from "@/components/modules/rota/staff-matrix";
+import { ClientsView } from "@/components/modules/rota/clients-view";
+import { CapacitySummary } from "@/components/modules/rota/capacity-summary";
+import { RotaTimeline } from "@/components/modules/rota/rota-timeline";
 
-type View = "visits" | "staff";
+type View = "visits" | "staff" | "clients" | "capacity" | "timeline";
 
 export default function RotaPage() {
   const [selectedDay, setSelectedDay] = useState(() => startOfDay(new Date()));
@@ -54,10 +57,19 @@ export default function RotaPage() {
           <Button size="sm" variant={view === "staff" ? "default" : "ghost"} onClick={() => setView("staff")}>
             Staff
           </Button>
+          <Button size="sm" variant={view === "clients" ? "default" : "ghost"} onClick={() => setView("clients")}>
+            Clients
+          </Button>
+          <Button size="sm" variant={view === "capacity" ? "default" : "ghost"} onClick={() => setView("capacity")}>
+            Capacity
+          </Button>
+          <Button size="sm" variant={view === "timeline" ? "default" : "ghost"} onClick={() => setView("timeline")}>
+            Timeline
+          </Button>
         </div>
       </div>
 
-      {view === "visits" && (
+      {(view === "visits" || view === "clients" || view === "timeline") && (
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <div className="flex items-center gap-2">
             <Button variant="outline" size="lg" onClick={prevDay} aria-label="Previous day">
@@ -95,12 +107,25 @@ export default function RotaPage() {
           leave={data?.leave ?? []}
           onMutated={() => utils.rota.grid.invalidate()}
         />
-      ) : (
+      ) : view === "staff" ? (
         <StaffMatrix
           weekDays={weekDays}
           staff={staff}
           availability={data?.availability ?? []}
           leave={data?.leave ?? []}
+        />
+      ) : view === "clients" ? (
+        <ClientsView selectedDay={selectedDay} weekDays={weekDays} visits={data?.visits ?? []} />
+      ) : view === "capacity" ? (
+        <CapacitySummary visits={data?.visits ?? []} staff={staff} />
+      ) : (
+        <RotaTimeline
+          selectedDay={selectedDay}
+          visits={data?.visits ?? []}
+          staff={staff}
+          availability={data?.availability ?? []}
+          leave={data?.leave ?? []}
+          onMutated={() => utils.rota.grid.invalidate()}
         />
       )}
     </div>

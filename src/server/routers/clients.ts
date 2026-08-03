@@ -834,6 +834,7 @@ export const clientsRouter = router({
       z.object({
         serviceUserId: z.string().min(1),
         staffMemberId: z.string().min(1).optional(),
+        rotaVisitId: z.string().min(1).optional(),
         visitDate: z.coerce.date(),
         scheduledStart: z.string(), // "HH:MM"
         scheduledEnd: z.string(),
@@ -858,6 +859,17 @@ export const clientsRouter = router({
     )
     .mutation(async ({ ctx, input }) => {
       await assertServiceUserInOrg(ctx.db, input.serviceUserId);
+
+      if (input.rotaVisitId) {
+        const rotaVisit = await ctx.db.rotaVisit.findFirst({
+          where: { id: input.rotaVisitId, serviceUserId: input.serviceUserId },
+          select: { id: true },
+        });
+        if (!rotaVisit) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Rota visit not found for this client." });
+        }
+      }
+
       // Resolve staff member: use provided or look up from current user
       let staffMemberId = input.staffMemberId;
       if (!staffMemberId) {
@@ -886,6 +898,7 @@ export const clientsRouter = router({
         data: {
           serviceUserId: input.serviceUserId,
           staffMemberId,
+          rotaVisitId: input.rotaVisitId,
           organisationId: ctx.user.organisationId,
           visitDate: input.visitDate,
           scheduledStart: makeDateTime(input.visitDate, input.scheduledStart),

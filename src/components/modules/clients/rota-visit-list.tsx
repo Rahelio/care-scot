@@ -5,17 +5,30 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { toast } from "sonner";
-import { CalendarClock, Plus, Pencil, Ban, Trash2 } from "lucide-react";
+import { CalendarClock, Plus, Pencil, Ban, Trash2, Repeat } from "lucide-react";
 
 import { trpc } from "@/lib/trpc";
+import { cn } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+
+const DAYS_OF_WEEK = [
+  { value: "MONDAY", label: "Monday" },
+  { value: "TUESDAY", label: "Tuesday" },
+  { value: "WEDNESDAY", label: "Wednesday" },
+  { value: "THURSDAY", label: "Thursday" },
+  { value: "FRIDAY", label: "Friday" },
+  { value: "SATURDAY", label: "Saturday" },
+  { value: "SUNDAY", label: "Sunday" },
+] as const;
 
 type RotaVisitRow = {
   id: string;
@@ -161,6 +174,136 @@ function VisitDialog({
   );
 }
 
+function emptyRecurringForm() {
+  return {
+    days: [] as string[],
+    startTime: "",
+    endTime: "",
+    carersRequired: "1",
+    notes: "",
+    rangeStart: new Date().toISOString().split("T")[0],
+    rangeEnd: "",
+  };
+}
+
+function RecurringVisitDialog({
+  open, onClose, serviceUserId, onSuccess,
+}: {
+  open: boolean; onClose: () => void; serviceUserId: string; onSuccess: () => void;
+}) {
+  const [form, setForm] = useState(emptyRecurringForm());
+
+  const createRecurringMut = trpc.rota.visits.createRecurring.useMutation({
+    onSuccess: (result) => {
+      toast.success(
+        `${result.createdCount} visit${result.createdCount !== 1 ? "s" : ""} created` +
+          (result.skippedCount > 0 ? ` (${result.skippedCount} already existed)` : ""),
+      );
+      onSuccess();
+      close();
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  function close() {
+    setForm(emptyRecurringForm());
+    onClose();
+  }
+
+  function toggleDay(day: string) {
+    setForm((f) => ({
+      ...f,
+      days: f.days.includes(day) ? f.days.filter((d) => d !== day) : [...f.days, day],
+    }));
+  }
+
+  function handleSubmit() {
+    createRecurringMut.mutate({
+      serviceUserId,
+      daysOfWeek: form.days as ("MONDAY" | "TUESDAY" | "WEDNESDAY" | "THURSDAY" | "FRIDAY" | "SATURDAY" | "SUNDAY")[],
+      startTime: form.startTime,
+      endTime: form.endTime,
+      carersRequired: parseInt(form.carersRequired, 10),
+      notes: form.notes || undefined,
+      rangeStart: new Date(form.rangeStart),
+      rangeEnd: new Date(form.rangeEnd),
+    });
+  }
+
+  const isValid =
+    form.days.length > 0 && form.startTime && form.endTime && form.rangeStart && form.rangeEnd &&
+    form.rangeEnd >= form.rangeStart;
+
+  return (
+    <Dialog open={open} onOpenChange={(v) => !v && close()}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Add recurring visits</DialogTitle>
+        </DialogHeader>
+
+        <div className="space-y-4">
+          <div>
+            <Label className="mb-2 block">Days of week</Label>
+            <div className="grid grid-cols-2 gap-x-4 gap-y-2">
+              {DAYS_OF_WEEK.map((d) => (
+                <label
+                  key={d.value}
+                  className={cn(
+                    "flex items-center gap-2 cursor-pointer select-none rounded px-1 py-0.5",
+                    "hover:bg-muted/60 transition-colors",
+                  )}
+                >
+                  <Checkbox checked={form.days.includes(d.value)} onCheckedChange={() => toggleDay(d.value)} />
+                  <span className="text-sm">{d.label}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label>Start time</Label>
+              <Input type="time" value={form.startTime} onChange={(e) => setForm((f) => ({ ...f, startTime: e.target.value }))} />
+            </div>
+            <div>
+              <Label>End time</Label>
+              <Input type="time" value={form.endTime} onChange={(e) => setForm((f) => ({ ...f, endTime: e.target.value }))} />
+            </div>
+          </div>
+
+          <div>
+            <Label>Carers required</Label>
+            <Input type="number" min="1" value={form.carersRequired} onChange={(e) => setForm((f) => ({ ...f, carersRequired: e.target.value }))} />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label>From</Label>
+              <Input type="date" value={form.rangeStart} onChange={(e) => setForm((f) => ({ ...f, rangeStart: e.target.value }))} />
+            </div>
+            <div>
+              <Label>To</Label>
+              <Input type="date" value={form.rangeEnd} onChange={(e) => setForm((f) => ({ ...f, rangeEnd: e.target.value }))} />
+            </div>
+          </div>
+
+          <div>
+            <Label>Notes</Label>
+            <Textarea value={form.notes} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} rows={2} placeholder="Optional notes applied to every visit created" />
+          </div>
+        </div>
+
+        <div className="flex justify-end gap-2 pt-2">
+          <Button variant="outline" onClick={close}>Cancel</Button>
+          <Button disabled={!isValid || createRecurringMut.isPending} onClick={handleSubmit}>
+            {createRecurringMut.isPending ? "Creating…" : "Create visits"}
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 interface RotaVisitListProps {
   serviceUserId: string;
 }
@@ -168,6 +311,7 @@ interface RotaVisitListProps {
 export function RotaVisitList({ serviceUserId }: RotaVisitListProps) {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<RotaVisitRow | null>(null);
+  const [recurringOpen, setRecurringOpen] = useState(false);
 
   const { data: visits = [], refetch } = trpc.rota.visits.listByServiceUser.useQuery({ serviceUserId });
 
@@ -188,9 +332,14 @@ export function RotaVisitList({ serviceUserId }: RotaVisitListProps) {
             <CalendarClock className="h-4 w-4" />
             Planned Care Visits
           </CardTitle>
-          <Button size="sm" onClick={() => { setEditing(null); setOpen(true); }}>
-            <Plus className="h-4 w-4 mr-1" />Add Visit
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button size="sm" variant="outline" onClick={() => setRecurringOpen(true)}>
+              <Repeat className="h-4 w-4 mr-1" />Add recurring visits
+            </Button>
+            <Button size="sm" onClick={() => { setEditing(null); setOpen(true); }}>
+              <Plus className="h-4 w-4 mr-1" />Add Visit
+            </Button>
+          </div>
         </CardHeader>
         <CardContent className="p-0">
           {visits.length === 0 ? (
@@ -270,6 +419,12 @@ export function RotaVisitList({ serviceUserId }: RotaVisitListProps) {
         onClose={() => setOpen(false)}
         serviceUserId={serviceUserId}
         editing={editing}
+        onSuccess={() => { refetch(); }}
+      />
+      <RecurringVisitDialog
+        open={recurringOpen}
+        onClose={() => setRecurringOpen(false)}
+        serviceUserId={serviceUserId}
         onSuccess={() => { refetch(); }}
       />
     </div>

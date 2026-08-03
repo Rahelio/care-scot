@@ -60,6 +60,7 @@ export const staffRouter = router({
             phone: true,
             email: true,
             area: true,
+            contractHoursPerWeek: true,
           },
         }),
         ctx.db.staffMember.count({ where }),

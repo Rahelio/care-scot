@@ -2,20 +2,18 @@
 
 import { useState } from "react";
 import { toast } from "sonner";
-import { UserPlus, UserMinus, AlertTriangle, Clock, CalendarX2, ChevronDown, ChevronRight, Search, CircleCheck, Users2, Wand2 } from "lucide-react";
+import { UserPlus, UserMinus, AlertTriangle, Clock, CalendarX2, ChevronDown, ChevronRight, Search, Users2, Wand2 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
-import { isSameDay } from "@/lib/date-helpers";
+import { isSameDay, formatShort, dayOfWeekName } from "@/lib/date-helpers";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import type { StaffOption, AvailabilityRow, LeaveRow } from "./staff-matrix";
-import { type RotaVisitRow, findContinuityIssues, computeVisitGaps, buildRounds } from "@/lib/rota-scheduling";
-
-const DAY_OF_WEEK_BY_JS_DAY = ["SUNDAY", "MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"];
+import { type RotaVisitRow, findContinuityIssues, computeVisitGaps, buildRounds, needsAttention, visitStatusInfo } from "@/lib/rota-scheduling";
+import { AssignVisitsDialog } from "./assign-visits-dialog";
 
 const ABSENCE_LABELS: Record<string, string> = {
   SICK: "Sick leave",
@@ -32,12 +30,6 @@ const TIME_BANDS = [
 
 export type { RotaVisitRow };
 
-interface ConflictEntry {
-  rotaVisitId: string;
-  staffMemberId: string;
-  conflicts: { message: string }[];
-}
-
 interface Props {
   selectedDay: Date;
   visits: RotaVisitRow[];
@@ -51,35 +43,12 @@ function fullName(p: { firstName: string; lastName: string }): string {
   return `${p.firstName} ${p.lastName}`;
 }
 
-function visitStatusInfo(visit: RotaVisitRow): { label: string; className: string } {
-  if (visit.status === "CANCELLED") {
-    return { label: "Cancelled", className: "bg-muted text-muted-foreground border-border" };
-  }
-  const assigned = visit.assignments.length;
-  if (assigned === 0) {
-    return { label: "Unassigned", className: "bg-orange-100 text-orange-800 border-orange-300" };
-  }
-  if (assigned < visit.carersRequired) {
-    return {
-      label: `${assigned} of ${visit.carersRequired} carers assigned`,
-      className: "bg-blue-100 text-blue-800 border-blue-300",
-    };
-  }
-  return { label: "Fully assigned", className: "bg-green-100 text-green-800 border-green-300" };
-}
-
 /** A staff member's card stays expanded while any of their visits that day
  * still needs more carers assigned — collapsing is only for rows with
  * nothing left to act on. */
-function needsAttention(memberVisits: RotaVisitRow[]): boolean {
-  return memberVisits.some((v) => v.status !== "CANCELLED" && v.assignments.length < v.carersRequired);
-}
-
 export function DayVisitAssignmentList({ selectedDay, visits, staff, availability, leave, onMutated }: Props) {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [assignOpen, setAssignOpen] = useState(false);
-  const [selectedStaffIds, setSelectedStaffIds] = useState<Set<string>>(new Set());
-  const [conflicts, setConflicts] = useState<ConflictEntry[] | null>(null);
   const [query, setQuery] = useState("");
   const [expandOverrides, setExpandOverrides] = useState<Map<string, boolean>>(new Map());
   const [collapsedBands, setCollapsedBands] = useState<Set<string>>(new Set());
@@ -96,29 +65,12 @@ export function DayVisitAssignmentList({ selectedDay, visits, staff, availabilit
     setCollapsedBands(new Set());
   }
 
-  const bulkAssignMut = trpc.rota.assignments.bulkAssign.useMutation({
-    onError: (e) => toast.error(e.message),
-  });
   const bulkUnassignMut = trpc.rota.assignments.bulkUnassign.useMutation({
     onError: (e) => toast.error(e.message),
   });
   const autoAssignMut = trpc.rota.assignments.autoAssign.useMutation({
     onError: (e) => toast.error(e.message),
   });
-
-  // Live availability preview for the assign dialog — the exact same
-  // conflict check the assign mutation runs on submit, run early so the
-  // picker can show a warning before the admin commits to a choice.
-  const { data: availabilityPreview, isPending: isCheckingAvailability } =
-    trpc.rota.assignments.checkAvailability.useQuery(
-      { rotaVisitIds: [...selectedIds] },
-      { enabled: assignOpen && selectedIds.size > 0 },
-    );
-
-  function staffName(id: string): string {
-    const s = staff.find((m) => m.id === id);
-    return s ? fullName(s) : "Staff member";
-  }
 
   const dayVisits = visits.filter((v) => isSameDay(new Date(v.visitDate), selectedDay));
   const activeDayVisits = dayVisits.filter((v) => v.status !== "CANCELLED");
@@ -137,7 +89,7 @@ export function DayVisitAssignmentList({ selectedDay, visits, staff, availabilit
   const continuityIssues = findContinuityIssues(activeDayVisits);
   const continuityClientIds = new Set(continuityIssues.map((i) => i.serviceUser.id));
 
-  const dayOfWeek = DAY_OF_WEEK_BY_JS_DAY[selectedDay.getDay()];
+  const dayOfWeek = dayOfWeekName(selectedDay);
 
   const q = query.trim().toLowerCase();
   const isSearching = q.length > 0;
@@ -177,15 +129,6 @@ export function DayVisitAssignmentList({ selectedDay, visits, staff, availabilit
     });
   }
 
-  function toggleStaffSelect(id: string) {
-    setSelectedStaffIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }
-
   function toggleBand(key: string) {
     setCollapsedBands((prev) => {
       const next = new Set(prev);
@@ -197,32 +140,6 @@ export function DayVisitAssignmentList({ selectedDay, visits, staff, availabilit
 
   function toggleStaffExpanded(memberId: string, currentlyExpanded: boolean) {
     setExpandOverrides((prev) => new Map(prev).set(memberId, !currentlyExpanded));
-  }
-
-  function closeAssignDialog() {
-    setAssignOpen(false);
-    setSelectedStaffIds(new Set());
-    setConflicts(null);
-  }
-
-  async function submitAssign(overrideConflict: boolean) {
-    try {
-      const result = await bulkAssignMut.mutateAsync({
-        rotaVisitIds: [...selectedIds],
-        staffMemberIds: [...selectedStaffIds],
-        overrideConflict,
-      });
-      if (!result.applied) {
-        setConflicts(result.conflicts);
-        return;
-      }
-      toast.success("Staff assigned");
-      onMutated();
-      setSelectedIds(new Set());
-      closeAssignDialog();
-    } catch {
-      // onError handles the toast
-    }
   }
 
   async function handleUnassignAll() {
@@ -259,6 +176,26 @@ export function DayVisitAssignmentList({ selectedDay, visits, staff, availabilit
     }
   }
 
+  const weekUnassignedVisits = visits.filter((v) => v.status !== "CANCELLED" && v.assignments.length === 0);
+
+  async function handleAutoAssignWeek() {
+    try {
+      const result = await autoAssignMut.mutateAsync({ rotaVisitIds: weekUnassignedVisits.map((v) => v.id) });
+      setSkippedResults(result.skipped);
+      if (result.assignedCount === 0 && result.skipped.length === 0) {
+        toast.success("Nothing to assign — no unassigned visits this week");
+      } else {
+        toast.success(
+          `Auto-assigned ${result.assignedCount} of ${weekUnassignedVisits.length} visit${weekUnassignedVisits.length !== 1 ? "s" : ""} this week` +
+            (result.softConflictCount > 0 ? ` (${result.softConflictCount} outside usual availability)` : ""),
+        );
+      }
+      onMutated();
+    } catch {
+      // onError handles the toast
+    }
+  }
+
   const allSelected = activeDayVisits.length > 0 && selectedIds.size === activeDayVisits.length;
   const someSelected = selectedIds.size > 0 && !allSelected;
 
@@ -284,39 +221,6 @@ export function DayVisitAssignmentList({ selectedDay, visits, staff, availabilit
             <Badge variant="outline" className="text-xs bg-amber-50 text-amber-700 border-amber-300 block w-fit">
               Different carer on another visit today
             </Badge>
-          )}
-        </div>
-      </label>
-    );
-  }
-
-  function StaffRow({ member }: { member: StaffOption }) {
-    const memberConflicts = availabilityPreview?.find((r) => r.staffMemberId === member.id)?.conflicts ?? [];
-    return (
-      <label className="flex items-start gap-3 cursor-pointer select-none rounded px-2 py-2 hover:bg-muted/60 transition-colors">
-        <Checkbox
-          className="h-5 w-5 mt-0.5"
-          checked={selectedStaffIds.has(member.id)}
-          onCheckedChange={() => toggleStaffSelect(member.id)}
-        />
-        <div className="flex-1 min-w-0">
-          <span className="text-base">{fullName(member)}</span>
-          {availabilityPreview && (
-            memberConflicts.length === 0 ? (
-              <p className="flex items-center gap-1 text-sm text-green-700 mt-0.5">
-                <CircleCheck className="h-4 w-4 shrink-0" />
-                Available
-              </p>
-            ) : (
-              <div className="mt-0.5 space-y-0.5">
-                {memberConflicts.map((c, idx) => (
-                  <p key={idx} className="flex items-start gap-1 text-sm text-amber-700">
-                    <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
-                    <span className="break-words">{c.message}</span>
-                  </p>
-                ))}
-              </div>
-            )
           )}
         </div>
       </label>
@@ -474,6 +378,15 @@ export function DayVisitAssignmentList({ selectedDay, visits, staff, availabilit
             <Wand2 className="h-5 w-5 mr-2" />
             Auto-assign today
           </Button>
+          <Button
+            size="lg"
+            variant="outline"
+            onClick={handleAutoAssignWeek}
+            disabled={weekUnassignedVisits.length === 0 || autoAssignMut.isPending}
+          >
+            <Wand2 className="h-5 w-5 mr-2" />
+            Auto-assign this week
+          </Button>
         </div>
       </div>
 
@@ -499,10 +412,11 @@ export function DayVisitAssignmentList({ selectedDay, visits, staff, availabilit
           </div>
           <div className="mt-1 space-y-1">
             {skippedResults.map((s) => {
-              const visit = activeDayVisits.find((v) => v.id === s.rotaVisitId);
+              const visit = visits.find((v) => v.id === s.rotaVisitId);
+              const dayPrefix = visit && !isSameDay(new Date(visit.visitDate), selectedDay) ? `${formatShort(new Date(visit.visitDate))} ` : "";
               return (
                 <p key={s.rotaVisitId} className="text-sm text-amber-800">
-                  {visit ? `${fullName(visit.serviceUser)} ${visit.startTime}–${visit.endTime}` : "Visit"}: {s.reason}
+                  {visit ? `${dayPrefix}${fullName(visit.serviceUser)} ${visit.startTime}–${visit.endTime}` : "Visit"}: {s.reason}
                 </p>
               );
             })}
@@ -633,94 +547,16 @@ export function DayVisitAssignmentList({ selectedDay, visits, staff, availabilit
         </div>
       )}
 
-      <Dialog open={assignOpen} onOpenChange={(v) => !v && closeAssignDialog()}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle className="text-lg">
-              Assign staff to {selectedIds.size} visit{selectedIds.size !== 1 ? "s" : ""}
-            </DialogTitle>
-          </DialogHeader>
-
-          {conflicts ? (
-            <div className="space-y-3">
-              <p className="text-base text-muted-foreground">
-                Some selected staff have a scheduling conflict. You can still assign them anyway.
-              </p>
-              <div className="max-h-72 overflow-y-auto space-y-2">
-                {conflicts.map((c, idx) => (
-                  <div key={idx} className="rounded-md border border-amber-300 bg-amber-50 px-4 py-3">
-                    <p className="flex items-center gap-2 font-semibold text-base">
-                      <AlertTriangle className="h-4 w-4 text-amber-600" />
-                      {staffName(c.staffMemberId)}
-                    </p>
-                    {c.conflicts.map((conflict, cidx) => (
-                      <p key={cidx} className="text-sm text-muted-foreground pl-6">{conflict.message}</p>
-                    ))}
-                  </div>
-                ))}
-              </div>
-              <DialogFooter>
-                <Button size="lg" variant="outline" onClick={() => setConflicts(null)}>Back</Button>
-                <Button
-                  size="lg"
-                  variant="destructive"
-                  disabled={bulkAssignMut.isPending}
-                  onClick={() => submitAssign(true)}
-                >
-                  Assign anyway
-                </Button>
-              </DialogFooter>
-            </div>
-          ) : (
-            <>
-              {isCheckingAvailability && (
-                <p className="text-sm text-muted-foreground">Checking availability…</p>
-              )}
-              <div className="max-h-72 overflow-y-auto space-y-1">
-                {(() => {
-                  const selectedVisits = activeDayVisits.filter((v) => selectedIds.has(v.id));
-                  const areasInSelection = new Set(
-                    selectedVisits.map((v) => v.serviceUser.area).filter((a): a is string => Boolean(a)),
-                  );
-                  const commonArea = areasInSelection.size === 1 ? [...areasInSelection][0] : null;
-
-                  if (!commonArea) {
-                    return staff.map((member) => <StaffRow key={member.id} member={member} />);
-                  }
-                  const sameArea = staff.filter((m) => m.area === commonArea);
-                  const otherArea = staff.filter((m) => m.area !== commonArea);
-                  return (
-                    <>
-                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">
-                        Same area — {commonArea}
-                      </p>
-                      {sameArea.map((member) => <StaffRow key={member.id} member={member} />)}
-                      {otherArea.length > 0 && (
-                        <>
-                          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mt-3 mb-1">
-                            Other staff
-                          </p>
-                          {otherArea.map((member) => <StaffRow key={member.id} member={member} />)}
-                        </>
-                      )}
-                    </>
-                  );
-                })()}
-              </div>
-              <DialogFooter>
-                <Button size="lg" variant="outline" onClick={closeAssignDialog}>Cancel</Button>
-                <Button
-                  size="lg"
-                  disabled={selectedStaffIds.size === 0 || bulkAssignMut.isPending}
-                  onClick={() => submitAssign(false)}
-                >
-                  Assign
-                </Button>
-              </DialogFooter>
-            </>
-          )}
-        </DialogContent>
-      </Dialog>
+      <AssignVisitsDialog
+        open={assignOpen}
+        onOpenChange={setAssignOpen}
+        visits={activeDayVisits.filter((v) => selectedIds.has(v.id))}
+        staff={staff}
+        onAssigned={() => {
+          onMutated();
+          setSelectedIds(new Set());
+        }}
+      />
     </div>
   );
 }
