@@ -1,6 +1,7 @@
 "use client";
 
 import { use } from "react";
+import Link from "next/link";
 import {
   TriangleAlert,
   Calendar,
@@ -9,9 +10,11 @@ import {
   Clock,
   BellRing,
   CheckCircle2,
+  Shield,
 } from "lucide-react";
 import { useSession } from "next-auth/react";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { trpc } from "@/lib/trpc";
@@ -23,6 +26,8 @@ import {
   SEVERITY_CONFIG,
   STATUS_CONFIG,
   CI_NOTIFICATION_TYPE_LABELS,
+  SAFEGUARDING_TYPE_LABELS,
+  SAFEGUARDING_STATUS_CONFIG,
 } from "@/components/modules/incidents/incident-meta";
 
 function LV({ label, value }: { label: string; value?: string | null }) {
@@ -265,6 +270,74 @@ export default function IncidentDetailPage({
                 )}
               </div>
             ))}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Safeguarding */}
+      {incident.incidentType === "SAFEGUARDING" && (
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Shield className="h-4 w-4" />
+              Safeguarding Concern
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {incident.safeguardingConcerns.length > 0 ? (
+              <div className="divide-y">
+                {incident.safeguardingConcerns.map((concern) => {
+                  const statusConfig =
+                    SAFEGUARDING_STATUS_CONFIG[concern.status] ?? undefined;
+                  return (
+                    <Link
+                      key={concern.id}
+                      href={`/incidents/safeguarding/${concern.id}`}
+                      className="flex items-center justify-between gap-2 py-3 hover:bg-muted/40 -mx-2 px-2 rounded-md"
+                    >
+                      <div>
+                        <span className="text-sm font-medium">
+                          {SAFEGUARDING_TYPE_LABELS[concern.concernType] ??
+                            concern.concernType}
+                        </span>
+                        <p className="text-xs text-muted-foreground">
+                          Raised {formatDate(concern.concernDate)}
+                        </p>
+                      </div>
+                      <Badge variant="outline" className={statusConfig?.badgeClass}>
+                        {statusConfig?.label ?? concern.status}
+                      </Badge>
+                    </Link>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="flex items-center justify-between gap-4 flex-wrap">
+                <p className="text-sm text-muted-foreground">
+                  No safeguarding concern has been raised for this incident yet.
+                </p>
+                <Button asChild size="sm" variant="outline">
+                  <Link
+                    href={{
+                      pathname: "/incidents/safeguarding/new",
+                      query: {
+                        incidentId: incident.id,
+                        ...(incident.serviceUser && {
+                          serviceUserId: incident.serviceUser.id,
+                          serviceUserName: `${incident.serviceUser.firstName} ${incident.serviceUser.lastName}`,
+                        }),
+                        concernDate: new Date(incident.incidentDate)
+                          .toISOString()
+                          .split("T")[0],
+                        ...(incident.description && { description: incident.description }),
+                      },
+                    }}
+                  >
+                    Create safeguarding concern
+                  </Link>
+                </Button>
+              </div>
+            )}
           </CardContent>
         </Card>
       )}

@@ -8,10 +8,12 @@ import {
   EquipmentType,
   CheckResult,
   CareInspectorateNotificationType,
+  AuditAction,
 } from "@prisma/client";
 import { TRPCError } from "@trpc/server";
 import { requirePermission } from "../middleware/rbac";
 import { notifyManagers } from "../services/shared/notification-generator";
+import { createAuditLog } from "../middleware/audit";
 import { dateRangeSchema, paginationSchema } from "../shared/validators";
 
 const incManageProcedure = protectedProcedure.use(
@@ -115,6 +117,10 @@ export const incidentsRouter = router({
             select: { id: true, email: true },
           },
           careInspNotifications: true,
+          safeguardingConcerns: {
+            select: { id: true, concernType: true, status: true, concernDate: true },
+            orderBy: { createdAt: "desc" },
+          },
         },
       });
     }),
@@ -296,6 +302,22 @@ export const incidentsRouter = router({
           },
         });
         if (!concern) throw new TRPCError({ code: "NOT_FOUND" });
+
+        // Fire-and-forget, matching the automatic audit middleware's own
+        // convention (audit.ts) — a safeguarding concern is exactly the
+        // kind of read that needs a "who looked at this" trail.
+        createAuditLog({
+          organisationId: ctx.user.organisationId,
+          userId: ctx.user.id,
+          entityType: "SafeguardingConcern",
+          entityId: input.id,
+          action: AuditAction.VIEW,
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+        }).catch((err) => {
+          console.error("[audit] Failed to log SafeguardingConcern view:", err);
+        });
+
         return concern;
       }),
 
@@ -307,6 +329,7 @@ export const incidentsRouter = router({
       .input(
         z.object({
           serviceUserId: z.string().min(1),
+          incidentId: z.string().min(1).optional(),
           concernDate: z.string(), // "YYYY-MM-DD"
           concernType: z.string(),
           description: z.string().min(1, "Description is required"),

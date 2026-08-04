@@ -29,7 +29,12 @@ import { Card, CardContent } from "@/components/ui/card";
 import { SAFEGUARDING_TYPE_LABELS } from "./incident-meta";
 
 const schema = z.object({
-  serviceUserId: z.string().uuid("Service user is required"),
+  // Not z.string().uuid(): the server only requires a non-empty id
+  // (z.string().min(1) in incidents.ts), and this field is often set from
+  // defaultServiceUserId with no visible FormField/FormMessage when it's
+  // prefilled — a stricter client-side check here would fail silently with
+  // no way for the user to see or fix it.
+  serviceUserId: z.string().min(1, "Service user is required"),
   concernDate: z.string().min(1, "Date is required"),
   concernType: z.string().min(1, "Concern type is required"),
   description: z.string().min(1, "Description is required"),
@@ -41,12 +46,21 @@ type FormValues = z.infer<typeof schema>;
 interface SafeguardingFormProps {
   defaultServiceUserId?: string;
   defaultServiceUserName?: string;
+  // Set when this concern is being raised from an incident (incidentType
+  // "SAFEGUARDING") — links the two records and pre-fills what's already
+  // known, so staff aren't re-keying the same date/description twice.
+  incidentId?: string;
+  defaultConcernDate?: string;
+  defaultDescription?: string;
   onSuccess?: (id: string) => void;
 }
 
 export function SafeguardingForm({
   defaultServiceUserId,
   defaultServiceUserName,
+  incidentId,
+  defaultConcernDate,
+  defaultDescription,
   onSuccess,
 }: SafeguardingFormProps) {
   const router = useRouter();
@@ -74,9 +88,9 @@ export function SafeguardingForm({
     resolver: zodResolver(schema),
     defaultValues: {
       serviceUserId: defaultServiceUserId ?? "",
-      concernDate: new Date().toISOString().split("T")[0],
+      concernDate: defaultConcernDate ?? new Date().toISOString().split("T")[0],
       concernType: "",
-      description: "",
+      description: defaultDescription ?? "",
       referredTo: "",
     },
   });
@@ -84,6 +98,7 @@ export function SafeguardingForm({
   async function onSubmit(values: FormValues) {
     await createMutation.mutateAsync({
       serviceUserId: values.serviceUserId,
+      incidentId,
       concernDate: values.concernDate,
       concernType: values.concernType,
       description: values.description,
@@ -111,6 +126,12 @@ export function SafeguardingForm({
             </div>
           </CardContent>
         </Card>
+
+        {incidentId && (
+          <div className="rounded-md border px-4 py-2.5 text-sm bg-muted/30 text-muted-foreground">
+            Linked to the incident this concern was raised from — date and description have been pre-filled.
+          </div>
+        )}
 
         {/* Service User */}
         {defaultServiceUserId ? (
