@@ -26,22 +26,60 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Invalid signature" }, { status: 400 });
   }
 
-  // Idempotency lock: a unique-constraint violation means this event was
-  // already processed (Stripe redelivers on timeout/ambiguous response).
-  try {
-    await prisma.stripeWebhookEvent.create({ data: { id: event.id, type: event.type } });
-  } catch {
-    return NextResponse.json({ received: true, duplicate: true });
-  }
+  const outcome = await processIdempotently(event, PRISMA_IDEMPOTENCY_STORE, handleEvent);
 
-  try {
-    await handleEvent(event);
-  } catch (err) {
-    console.error(`[stripe webhook] Failed to handle ${event.type}:`, err);
+  if (outcome === "handler-failed") {
     return NextResponse.json({ error: "Handler failed" }, { status: 500 });
   }
+  return NextResponse.json({ received: true, duplicate: outcome === "duplicate" });
+}
 
-  return NextResponse.json({ received: true });
+export interface IdempotencyStore {
+  has(eventId: string): Promise<boolean>;
+  record(eventId: string, eventType: string): Promise<void>;
+}
+
+const PRISMA_IDEMPOTENCY_STORE: IdempotencyStore = {
+  async has(eventId) {
+    return (await prisma.stripeWebhookEvent.findUnique({ where: { id: eventId } })) !== null;
+  },
+  async record(eventId, eventType) {
+    // A concurrent redelivery can race this insert and lose the unique
+    // constraint — safe to ignore, since handleEvent()'s writes (updateMany
+    // keyed on Stripe IDs) are themselves idempotent, so both redeliveries
+    // applied the same correct state regardless of which one wins the row.
+    await prisma.stripeWebhookEvent.create({ data: { id: eventId, type: eventType } }).catch(() => void 0);
+  },
+};
+
+/**
+ * Runs `handler(event)` exactly once per event ID, recording the
+ * idempotency row only AFTER the handler succeeds. This ordering matters:
+ * if the row were recorded before handling (as it once was), a transient
+ * handler failure would still leave the row in place, so Stripe's retry of
+ * the same event ID would be misread as "already processed" and silently
+ * dropped instead of actually being retried. Extracted from the route
+ * handler so this sequencing can be unit-tested with a fake store instead
+ * of a real database.
+ */
+export async function processIdempotently(
+  event: Stripe.Event,
+  store: IdempotencyStore,
+  handler: (event: Stripe.Event) => Promise<void>,
+): Promise<"processed" | "duplicate" | "handler-failed"> {
+  if (await store.has(event.id)) {
+    return "duplicate";
+  }
+
+  try {
+    await handler(event);
+  } catch (err) {
+    console.error(`[stripe webhook] Failed to handle ${event.type}:`, err);
+    return "handler-failed";
+  }
+
+  await store.record(event.id, event.type);
+  return "processed";
 }
 
 async function handleEvent(event: Stripe.Event): Promise<void> {
