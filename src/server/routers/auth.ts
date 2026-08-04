@@ -6,6 +6,7 @@ import { router, publicProcedure } from "../trpc";
 import { prisma } from "@/lib/prisma";
 import { createAuditLog } from "../middleware/audit";
 import { sendPasswordResetEmail } from "../shared/email";
+import { passwordSchema } from "../shared/validators";
 
 const RESET_TOKEN_TTL_MS = 60 * 60 * 1000; // 1 hour
 
@@ -55,7 +56,7 @@ export const authRouter = router({
     .input(
       z.object({
         token: z.string().min(1),
-        newPassword: z.string().min(8, "Password must be at least 8 characters"),
+        newPassword: passwordSchema,
       }),
     )
     .mutation(async ({ input }) => {

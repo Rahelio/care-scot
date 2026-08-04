@@ -6,6 +6,7 @@ import { router, publicProcedure } from "../trpc";
 import { prisma } from "@/lib/prisma";
 import { verifyTurnstileToken } from "../shared/turnstile";
 import { sendSignupVerificationEmail } from "../shared/email";
+import { passwordSchema } from "../shared/validators";
 
 const VERIFICATION_TOKEN_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 const SIGNUP_WINDOW_MS = 60 * 60 * 1000; // 1 hour
@@ -54,7 +55,7 @@ export const signupRouter = router({
       z.object({
         organisationName: z.string().min(1, "Organisation name is required"),
         email: z.string().email(),
-        password: z.string().min(8, "Password must be at least 8 characters"),
+        password: passwordSchema,
         turnstileToken: z.string().optional(),
       }),
     )

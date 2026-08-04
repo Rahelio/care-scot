@@ -4,7 +4,7 @@ import { TRPCError } from "@trpc/server";
 import { Prisma, UserRole } from "@prisma/client";
 import { router, protectedProcedure } from "../trpc";
 import { requirePermission } from "../middleware/rbac";
-import { paginationSchema } from "../shared/validators";
+import { paginationSchema, passwordSchema } from "../shared/validators";
 import { assertSeatAvailable } from "../services/billing/seats";
 
 const settingsProcedure = protectedProcedure.use(
@@ -122,7 +122,7 @@ const usersRouter = router({
         name: z.string().optional(),
         role: z.nativeEnum(UserRole),
         staffMemberId: z.string().min(1).optional(),
-        tempPassword: z.string().min(8, "Password must be at least 8 characters"),
+        tempPassword: passwordSchema,
       }),
     )
     .mutation(async ({ ctx, input }) => {

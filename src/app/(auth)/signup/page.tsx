@@ -21,7 +21,14 @@ import { TurnstileWidget } from "@/components/modules/turnstile-widget";
 const schema = z.object({
   organisationName: z.string().min(1, "Organisation name is required"),
   email: z.string().email("Please enter a valid email address"),
-  password: z.string().min(8, "Password must be at least 8 characters"),
+  // Mirrors passwordSchema in src/server/shared/validators.ts — kept in
+  // sync manually so the form catches a weak password before the round
+  // trip to the server, which enforces the same rule regardless.
+  password: z
+    .string()
+    .min(12, "Password must be at least 12 characters")
+    .regex(/[a-zA-Z]/, "Password must include at least one letter")
+    .regex(/[0-9]/, "Password must include at least one number"),
 });
 
 type FormValues = z.infer<typeof schema>;
