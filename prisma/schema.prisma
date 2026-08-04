@@ -529,6 +529,11 @@ model User {
   isActive          Boolean   @default(true) @map("is_active")
   lastLoginAt       DateTime? @map("last_login_at") @db.Timestamptz()
   mfaEnabled        Boolean   @default(false) @map("mfa_enabled")
+  // AES-256-GCM encrypted at app layer (base32 TOTP secret) — see
+  // src/server/middleware/field-encryption.ts. Set on beginEnrollment,
+  // only takes effect (mfaEnabled=true) once confirmEnrollment verifies a
+  // real code — see src/server/routers/mfa.ts.
+  mfaSecret         String?   @map("mfa_secret")
   passwordChangedAt DateTime? @map("password_changed_at") @db.Timestamptz()
   createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz()
   updatedAt         DateTime  @updatedAt @map("updated_at") @db.Timestamptz()
@@ -564,8 +569,29 @@ model User {
   notifications                  Notification[]
   approvedBillableVisits         BillableVisit[]                @relation("BillableVisitApprovedBy")
   rotaAssignmentsMade            RotaVisitAssignment[]          @relation("RotaAssignmentAssignedBy")
+  mfaRecoveryCodes               MfaRecoveryCode[]
+  voidedMedAdminRecords          MedicationAdminRecord[]        @relation("MedAdminVoidedBy")
 
   @@map("users")
+}
+
+// One-time-use MFA recovery codes, generated when TOTP enrollment is
+// confirmed. Stored as bcrypt hashes (never plaintext) — same treatment as
+// User.passwordHash, since a leaked recovery code is equivalent to a leaked
+// password for bypassing MFA. Not org-scoped (same convention as
+// PasswordResetToken): accessed by userId via the public auth router during
+// login, before an org-scoped session exists.
+model MfaRecoveryCode {
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  codeHash  String    @map("code_hash")
+  usedAt    DateTime? @map("used_at") @db.Timestamptz()
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("mfa_recovery_codes")
 }
 
 // Auth.js v5 required models
@@ -716,7 +742,7 @@ model ServiceUser {
   phonePrimary            String?           @map("phone_primary")
   phoneSecondary          String?           @map("phone_secondary")
   email                   String?
-  niNumber                String?           @map("ni_number") // stored encrypted at app layer
+  niNumber                String?           @map("ni_number") // AES-256-GCM encrypted at app layer — see src/server/middleware/field-encryption.ts
   gpName                  String?           @map("gp_name")
   gpPractice              String?           @map("gp_practice")
   gpPhone                 String?           @map("gp_phone")
@@ -1053,12 +1079,15 @@ model StaffMember {
   area                 String? // free-text rota scheduling area — distinct from postal city
   phone                String?
   email                String?
-  niNumber             String?        @map("ni_number") // stored encrypted at app layer
+  niNumber             String?        @map("ni_number") // AES-256-GCM encrypted at app layer — see src/server/middleware/field-encryption.ts
   jobTitle             String?        @map("job_title")
   roleType             StaffRoleType  @map("role_type")
   employmentType       EmploymentType @map("employment_type")
   contractHoursPerWeek Decimal?       @map("contract_hours_per_week") @db.Decimal(5, 2)
-  hourlyRate           Decimal?       @map("hourly_rate") @db.Decimal(10, 2) // stored encrypted at app layer
+  // AES-256-GCM encrypted at app layer, so stored as ciphertext text rather
+  // than a real Decimal column — parse after decrypting. See
+  // src/server/middleware/field-encryption.ts.
+  hourlyRate           String?        @map("hourly_rate")
   startDate            DateTime       @map("start_date") @db.Date
   endDate              DateTime?      @map("end_date") @db.Date
   probationEndDate     DateTime?      @map("probation_end_date") @db.Date
@@ -1395,6 +1424,14 @@ model MedicationAdminRecord {
   prnReasonGiven     String?   @map("prn_reason_given") @db.Text
   outcomeNotes       String?   @map("outcome_notes") @db.Text
   witnessId          String?   @map("witness_id") @db.Uuid // for controlled drugs
+  // A MAR entry is never edited or hard-deleted once created — correcting a
+  // mistaken entry (wrong outcome, wrong client) voids it instead, keeping
+  // the original for the audit/clinical record while excluding it from the
+  // MAR chart's at-a-glance status and PRN log. MANAGER+ only — see
+  // medication.ts's voidAdminRecord.
+  voidedAt           DateTime? @map("voided_at") @db.Timestamptz()
+  voidedBy           String?   @map("voided_by") @db.Uuid
+  voidReason         String?   @map("void_reason") @db.Text
   createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz()
   updatedAt          DateTime  @updatedAt @map("updated_at") @db.Timestamptz()
   createdBy          String?   @map("created_by") @db.Uuid
@@ -1404,6 +1441,7 @@ model MedicationAdminRecord {
   medication          ServiceUserMedication @relation(fields: [medicationId], references: [id])
   administeredByStaff StaffMember?          @relation("MedAdminAdministeredBy", fields: [administeredBy], references: [id])
   witness             StaffMember?          @relation("MedAdminWitness", fields: [witnessId], references: [id])
+  voidedByUser        User?                 @relation("MedAdminVoidedBy", fields: [voidedBy], references: [id])
 
   @@map("medication_administration_records")
 }
@@ -1496,6 +1534,7 @@ model Incident {
   reportedByUser        User?                          @relation("IncidentReportedBy", fields: [reportedBy], references: [id])
   closedByUser          User?                          @relation("IncidentClosedBy", fields: [closedBy], references: [id])
   careInspNotifications CareInspectorateNotification[]
+  safeguardingConcerns  SafeguardingConcern[]
 
   @@map("incidents")
 }
@@ -1504,6 +1543,7 @@ model SafeguardingConcern {
   id                           String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   organisationId               String                  @map("organisation_id") @db.Uuid
   serviceUserId                String                  @map("service_user_id") @db.Uuid
+  incidentId                   String?                 @map("incident_id") @db.Uuid
   concernDate                  DateTime                @map("concern_date") @db.Date
   concernType                  SafeguardingConcernType @map("concern_type")
   description                  String?                 @db.Text
@@ -1522,6 +1562,7 @@ model SafeguardingConcern {
 
   organisation Organisation @relation(fields: [organisationId], references: [id])
   serviceUser  ServiceUser  @relation(fields: [serviceUserId], references: [id])
+  incident     Incident?    @relation(fields: [incidentId], references: [id])
   raisedByUser User?        @relation("SafeguardingRaisedBy", fields: [raisedBy], references: [id])
 
   @@map("safeguarding_concerns")
