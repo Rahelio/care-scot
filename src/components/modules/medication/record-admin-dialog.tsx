@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useSession } from "next-auth/react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -48,6 +49,9 @@ type ExistingRecord = {
   scheduledTime: string;
   administeredByStaff: { firstName: string; lastName: string } | null;
   witness: { firstName: string; lastName: string } | null;
+  voidedAt: Date | string | null;
+  voidReason: string | null;
+  voidedByUser: { email: string } | null;
 };
 
 type Medication = {
@@ -69,7 +73,7 @@ interface RecordAdminDialogProps {
   onSuccess: () => void;
 }
 
-const schema = z.object({
+const baseSchema = z.object({
   outcome: z.string().min(1, "Required"), // "administered" | "refused" | "not_available"
   scheduledTime: z.string().min(1, "Required"),
   doseGiven: z.string().optional(),
@@ -80,7 +84,30 @@ const schema = z.object({
   witnessId: z.string().optional(),
 });
 
-type FormValues = z.infer<typeof schema>;
+type FormValues = z.infer<typeof baseSchema>;
+
+// Mirrors the server-side requirements in medication.ts's marRecord mutation
+// (witness for controlled drugs, reason for PRN) so the user sees inline
+// validation instead of only finding out after a round-trip to the server.
+function buildSchema(isControlledDrug: boolean, isPrn: boolean) {
+  return baseSchema.superRefine((values, ctx) => {
+    if (values.outcome !== "administered") return;
+    if (isControlledDrug && !values.witnessId) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["witnessId"],
+        message: "A witness is required for controlled drug administration",
+      });
+    }
+    if (isPrn && !values.prnReasonGiven) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["prnReasonGiven"],
+        message: "A reason is required for PRN administrations",
+      });
+    }
+  });
+}
 
 export function RecordAdminDialog({
   open,
@@ -92,10 +119,28 @@ export function RecordAdminDialog({
   onSuccess,
 }: RecordAdminDialogProps) {
   const utils = trpc.useUtils();
+  const { data: session } = useSession();
+  const canVoid = session?.user?.role
+    ? ["MANAGER", "ORG_ADMIN", "SUPER_ADMIN"].includes(session.user.role)
+    : false;
 
   const { data: staffList } = trpc.medication.listStaffForWitness.useQuery(undefined, {
     enabled: open && !!medication?.isControlledDrug,
   });
+
+  // A mis-tap here submits a permanent clinical record — "administered"
+  // (and its controlled-drug case especially) gets a confirmation step
+  // before the mutation fires. Refused/not-available are lower-stakes (no
+  // substance was actually given) and submit directly.
+  const [pendingSubmit, setPendingSubmit] = useState<FormValues | null>(null);
+
+  const [voidingId, setVoidingId] = useState<string | null>(null);
+  const [voidReasonInput, setVoidReasonInput] = useState("");
+
+  const schema = useMemo(
+    () => buildSchema(medication?.isControlledDrug ?? false, medication?.isPrn ?? false),
+    [medication?.isControlledDrug, medication?.isPrn],
+  );
 
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
@@ -112,6 +157,9 @@ export function RecordAdminDialog({
         scheduledTime: new Date().toTimeString().slice(0, 5),
         doseGiven: medication?.dose ?? undefined,
       });
+      setPendingSubmit(null);
+      setVoidingId(null);
+      setVoidReasonInput("");
     }
   }, [open, medication, form]);
 
@@ -125,9 +173,20 @@ export function RecordAdminDialog({
     onError: (err) => toast.error(err.message),
   });
 
+  const voidMutation = trpc.medication.voidAdminRecord.useMutation({
+    onSuccess: () => {
+      toast.success("Entry voided");
+      utils.medication.getMarByMonth.invalidate();
+      setVoidingId(null);
+      setVoidReasonInput("");
+      onSuccess();
+    },
+    onError: (err) => toast.error(err.message),
+  });
+
   const outcome = form.watch("outcome");
 
-  function onSubmit(values: FormValues) {
+  function submitRecord(values: FormValues) {
     if (!medication) return;
     mutation.mutate({
       serviceUserId,
@@ -145,6 +204,14 @@ export function RecordAdminDialog({
       outcomeNotes: values.outcomeNotes,
       witnessId: values.witnessId || undefined,
     });
+  }
+
+  function onSubmit(values: FormValues) {
+    if (values.outcome === "administered") {
+      setPendingSubmit(values);
+      return;
+    }
+    submitRecord(values);
   }
 
   if (!medication) return null;
@@ -178,38 +245,126 @@ export function RecordAdminDialog({
               Already recorded today
             </p>
             {existingRecords.map((r) => (
-              <div key={r.id} className="text-sm flex items-start gap-2">
-                <span className="shrink-0 font-mono text-xs text-muted-foreground mt-0.5">
-                  {r.scheduledTime}
-                </span>
-                <div>
-                  {r.administered && (
-                    <span className="text-green-700 font-medium">
-                      Given{r.doseGiven ? ` — ${r.doseGiven}` : ""}
-                    </span>
+              <div key={r.id} className="text-sm space-y-1">
+                <div className="flex items-start gap-2">
+                  <span className="shrink-0 font-mono text-xs text-muted-foreground mt-0.5">
+                    {r.scheduledTime}
+                  </span>
+                  {r.voidedAt ? (
+                    <div className="text-muted-foreground line-through decoration-destructive/60">
+                      {r.administered && `Given${r.doseGiven ? ` — ${r.doseGiven}` : ""}`}
+                      {r.refused && `Refused${r.refusedReason ? ` — ${r.refusedReason}` : ""}`}
+                      {r.notAvailable &&
+                        `Not available${r.notAvailableReason ? ` — ${r.notAvailableReason}` : ""}`}
+                    </div>
+                  ) : (
+                    <div className="flex-1">
+                      {r.administered && (
+                        <span className="text-green-700 font-medium">
+                          Given{r.doseGiven ? ` — ${r.doseGiven}` : ""}
+                        </span>
+                      )}
+                      {r.refused && (
+                        <span className="text-red-700 font-medium">
+                          Refused{r.refusedReason ? ` — ${r.refusedReason}` : ""}
+                        </span>
+                      )}
+                      {r.notAvailable && (
+                        <span className="text-orange-700 font-medium">
+                          Not available{r.notAvailableReason ? ` — ${r.notAvailableReason}` : ""}
+                        </span>
+                      )}
+                      {r.administeredByStaff && (
+                        <span className="text-muted-foreground">
+                          {" "}
+                          by {r.administeredByStaff.firstName} {r.administeredByStaff.lastName}
+                        </span>
+                      )}
+                    </div>
                   )}
-                  {r.refused && (
-                    <span className="text-red-700 font-medium">
-                      Refused{r.refusedReason ? ` — ${r.refusedReason}` : ""}
-                    </span>
-                  )}
-                  {r.notAvailable && (
-                    <span className="text-orange-700 font-medium">
-                      Not available{r.notAvailableReason ? ` — ${r.notAvailableReason}` : ""}
-                    </span>
-                  )}
-                  {r.administeredByStaff && (
-                    <span className="text-muted-foreground">
-                      {" "}
-                      by {r.administeredByStaff.firstName} {r.administeredByStaff.lastName}
-                    </span>
+                  {canVoid && !r.voidedAt && voidingId !== r.id && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 px-2 text-xs text-muted-foreground hover:text-destructive shrink-0"
+                      onClick={() => {
+                        setVoidingId(r.id);
+                        setVoidReasonInput("");
+                      }}
+                    >
+                      Void
+                    </Button>
                   )}
                 </div>
+
+                {r.voidedAt && (
+                  <p className="text-xs text-destructive pl-[3.25rem]">
+                    Voided{r.voidedByUser ? ` by ${r.voidedByUser.email}` : ""}
+                    {r.voidReason ? ` — ${r.voidReason}` : ""}
+                  </p>
+                )}
+
+                {voidingId === r.id && (
+                  <div className="pl-[3.25rem] space-y-2">
+                    <Textarea
+                      value={voidReasonInput}
+                      onChange={(e) => setVoidReasonInput(e.target.value)}
+                      placeholder="Why is this entry being voided? (e.g. wrong client, wrong outcome selected)"
+                      rows={2}
+                      className="text-xs"
+                    />
+                    <div className="flex gap-2">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="destructive"
+                        disabled={!voidReasonInput.trim() || voidMutation.isPending}
+                        onClick={() => voidMutation.mutate({ id: r.id, reason: voidReasonInput.trim() })}
+                      >
+                        {voidMutation.isPending ? "Voiding…" : "Confirm void"}
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          setVoidingId(null);
+                          setVoidReasonInput("");
+                        }}
+                      >
+                        Cancel
+                      </Button>
+                    </div>
+                  </div>
+                )}
               </div>
             ))}
           </div>
         )}
 
+        {pendingSubmit ? (
+          <div className="space-y-4">
+            <div className="rounded-md border border-amber-300 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/20 p-4 space-y-1">
+              <p className="text-sm font-semibold text-amber-800 dark:text-amber-300">
+                Confirm administration
+              </p>
+              <p className="text-sm text-amber-700 dark:text-amber-400">
+                {medication.medicationName}
+                {pendingSubmit.doseGiven ? ` — ${pendingSubmit.doseGiven}` : medication.dose ? ` — ${medication.dose}` : ""}
+                {" "}at {pendingSubmit.scheduledTime}. This creates a permanent record.
+              </p>
+            </div>
+            <div className="flex justify-end gap-3">
+              <Button type="button" variant="outline" onClick={() => setPendingSubmit(null)} disabled={mutation.isPending}>
+                Back
+              </Button>
+              <Button type="button" onClick={() => submitRecord(pendingSubmit)} disabled={mutation.isPending}>
+                {mutation.isPending ? "Saving…" : "Confirm"}
+              </Button>
+            </div>
+          </div>
+        ) : (
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
             <p className="text-sm font-medium">
@@ -383,6 +538,7 @@ export function RecordAdminDialog({
             </div>
           </form>
         </Form>
+        )}
       </DialogContent>
     </Dialog>
   );

@@ -39,6 +39,9 @@ type AdminRecord = {
   outcomeNotes: string | null;
   administeredByStaff: { id: string; firstName: string; lastName: string } | null;
   witness: { id: string; firstName: string; lastName: string } | null;
+  voidedAt: Date | string | null;
+  voidReason: string | null;
+  voidedByUser: { id: string; email: string } | null;
 };
 
 // ── Helpers ────────────────────────────────────────────────────────────
@@ -60,7 +63,12 @@ function dayKey(date: Date): number {
 
 type CellStatus = "administered" | "refused" | "not_available" | "prn" | "empty" | "mixed";
 
-function getCellStatus(records: AdminRecord[], isPrn: boolean): CellStatus {
+function getCellStatus(allRecords: AdminRecord[], isPrn: boolean): CellStatus {
+  // Voided entries were mis-recorded (wrong outcome/client) — they don't
+  // count toward what actually happened, so the at-a-glance chart ignores
+  // them entirely. The original stays visible (marked voided) in the day's
+  // detail view for the correction trail.
+  const records = allRecords.filter((r) => !r.voidedAt);
   if (records.length === 0) return "empty";
   const administered = records.filter((r) => r.administered);
   const refused = records.filter((r) => r.refused);
@@ -184,9 +192,10 @@ export function MarChart({ serviceUserId }: MarChartProps) {
   const regularMeds = medications.filter((m) => !m.isPrn);
   const prnMeds = medications.filter((m) => m.isPrn);
 
-  // All PRN records for the month (administered)
+  // All PRN records for the month (administered, excluding voided entries —
+  // see getCellStatus's comment on why voided entries don't count).
   const prnRecords = records.filter(
-    (r) => r.administered && r.prnReasonGiven
+    (r) => r.administered && r.prnReasonGiven && !r.voidedAt
   );
 
   if (isPending) {
@@ -307,13 +316,14 @@ export function MarChart({ serviceUserId }: MarChartProps) {
                               title={
                                 dayRecs.length > 0
                                   ? dayRecs
-                                      .map((r) =>
-                                        r.administered
+                                      .map((r) => {
+                                        if (r.voidedAt) return "Voided entry (see detail)";
+                                        return r.administered
                                           ? `Given${r.doseGiven ? " " + r.doseGiven : ""}`
                                           : r.refused
                                           ? `Refused${r.refusedReason ? ": " + r.refusedReason : ""}`
-                                          : "Not available"
-                                      )
+                                          : "Not available";
+                                      })
                                       .join("; ")
                                   : undefined
                               }

@@ -5,9 +5,11 @@ import {
   MedicationErrorType,
   NccMerpCategory,
   AuditStatus,
+  AuditAction,
 } from "@prisma/client";
 import { TRPCError } from "@trpc/server";
 import { requirePermission, requireRole } from "../middleware/rbac";
+import { createAuditLog } from "../middleware/audit";
 
 const medReadProcedure = protectedProcedure.use(requirePermission("medication.read"));
 const medAdminProcedure = protectedProcedure.use(requirePermission("medication.administer"));
@@ -19,6 +21,37 @@ const HIGH_SEVERITY_CATEGORIES: NccMerpCategory[] = ["E", "F", "G", "H", "I"];
 
 export function isHighSeverityMerpCategory(category: NccMerpCategory): boolean {
   return HIGH_SEVERITY_CATEGORIES.includes(category);
+}
+
+/**
+ * Validates the administer-specific rules for a MAR entry: a witness (distinct
+ * from the administering staff member) for controlled drugs, and a reason for
+ * PRN administrations. Returns an error message, or null if valid. Extracted
+ * as a pure function so the self-witness rule can be unit-tested without a
+ * tRPC/database harness.
+ */
+export function validateAdministration(params: {
+  isControlledDrug: boolean;
+  isPrn: boolean;
+  administered: boolean;
+  witnessId?: string | null;
+  administeringStaffMemberId: string;
+  prnReasonGiven?: string | null;
+}): string | null {
+  const { isControlledDrug, isPrn, administered, witnessId, administeringStaffMemberId, prnReasonGiven } = params;
+
+  if (!administered) return null;
+
+  if (isControlledDrug && !witnessId) {
+    return "A witness is required for controlled drug administration";
+  }
+  if (isControlledDrug && witnessId === administeringStaffMemberId) {
+    return "The witness must be a different staff member from the person administering";
+  }
+  if (isPrn && !prnReasonGiven) {
+    return "A reason is required for PRN administrations";
+  }
+  return null;
 }
 
 // Shared Zod schemas for audit findings JSON
@@ -179,10 +212,30 @@ export const medicationRouter = router({
             witness: {
               select: { id: true, firstName: true, lastName: true },
             },
+            voidedByUser: {
+              select: { id: true, email: true },
+            },
           },
           orderBy: [{ scheduledDate: "asc" }, { scheduledTime: "asc" }],
         }),
       ]);
+
+      // Fire-and-forget, matching the automatic audit middleware's own
+      // convention (audit.ts) — a client's medication administration
+      // history is exactly the kind of read that needs a "who looked at
+      // this" trail, which CREATE/UPDATE/DELETE logging alone doesn't give.
+      createAuditLog({
+        organisationId: ctx.user.organisationId,
+        userId: ctx.user.id,
+        entityType: "ServiceUser",
+        entityId: input.serviceUserId,
+        action: AuditAction.VIEW,
+        changes: { context: "medication_mar_chart" },
+        ipAddress: ctx.ipAddress,
+        userAgent: ctx.userAgent,
+      }).catch((err) => {
+        console.error("[audit] Failed to log MAR chart view:", err);
+      });
 
       return { medications, records };
     }),
@@ -220,18 +273,16 @@ export const medicationRouter = router({
         throw new TRPCError({ code: "NOT_FOUND" });
       }
 
-      if (medication.isControlledDrug && input.administered && !input.witnessId) {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: "A witness is required for controlled drug administration",
-        });
-      }
-
-      if (medication.isPrn && input.administered && !input.prnReasonGiven) {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: "A reason is required for PRN administrations",
-        });
+      const validationError = validateAdministration({
+        isControlledDrug: medication.isControlledDrug,
+        isPrn: medication.isPrn,
+        administered: input.administered,
+        witnessId: input.witnessId,
+        administeringStaffMemberId: ctx.user.staffMemberId,
+        prnReasonGiven: input.prnReasonGiven,
+      });
+      if (validationError) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: validationError });
       }
 
       return ctx.db.medicationAdminRecord.create({
@@ -258,9 +309,41 @@ export const medicationRouter = router({
       });
     }),
 
+  /**
+   * Voids a MAR entry — the correction path for a mis-recorded
+   * administration (wrong outcome, wrong client). Never edits or deletes
+   * the original row: it stays in place for the clinical/audit record,
+   * marked voided, and is excluded from the MAR chart's at-a-glance status
+   * and the PRN log. MANAGER+ only, matching other administrative
+   * corrections in this module.
+   */
+  voidAdminRecord: medManageProcedure
+    .input(z.object({ id: z.string().min(1), reason: z.string().min(1, "A reason is required") }))
+    .mutation(async ({ ctx, input }) => {
+      const record = await ctx.db.medicationAdminRecord.findUniqueOrThrow({
+        where: { id: input.id },
+        select: { voidedAt: true },
+      });
+      if (record.voidedAt) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "This record has already been voided." });
+      }
+
+      return ctx.db.medicationAdminRecord.update({
+        where: { id: input.id },
+        data: {
+          voidedAt: new Date(),
+          voidedBy: ctx.user.id,
+          voidReason: input.reason,
+          updatedBy: ctx.user.id,
+        },
+      });
+    }),
+
   listStaffForWitness: medAdminProcedure.query(async ({ ctx }) => {
     return ctx.db.staffMember.findMany({
-      where: { status: "ACTIVE" },
+      // Exclude the current user so the UI never offers self-witnessing —
+      // a controlled-drug witness must be a different staff member.
+      where: { status: "ACTIVE", id: { not: ctx.user.staffMemberId ?? undefined } },
       select: { id: true, firstName: true, lastName: true },
       orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
     });
