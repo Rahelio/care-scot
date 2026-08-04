@@ -80,8 +80,15 @@ export class LocalFileAdapter implements FileStorageAdapter {
     await fs.unlink(fullPath).catch(() => void 0);
   }
 
-  async getUrl(storagePath: string): Promise<string> {
-    return `/api/files/download?path=${encodeURIComponent(storagePath)}`;
+  async getUrl(): Promise<string> {
+    // No direct-download route exists for local storage — every consumer
+    // must go through the org-scoped/RBAC-checked `files.download` tRPC
+    // procedure instead. Throwing here (rather than returning a URL to a
+    // route that doesn't exist) turns a silent 404 into a loud failure if
+    // anything ever tries to use this path again.
+    throw new Error(
+      "LocalFileAdapter has no direct-download URL — use the files.download tRPC procedure.",
+    );
   }
 }
 

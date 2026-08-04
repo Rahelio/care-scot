@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { router, protectedProcedure } from "../trpc";
+import { requirePermission } from "../middleware/rbac";
 import { getFileStorage } from "../shared/file-storage";
 import { StorageProvider } from "@prisma/client";
 
@@ -53,12 +54,19 @@ function validateFile(fileName: string, mimeType: string, sizeBytes: number) {
   }
 }
 
+// All current entity types are staff documents (PVG/DBS certs, references,
+// right-to-work docs, disciplinary attachments) — gate on the same
+// staff.read/staff.manage permissions as the staff records they belong to,
+// so a plain CARER can no longer read or delete a colleague's file.
+const filesReadProcedure = protectedProcedure.use(requirePermission("staff.read"));
+const filesManageProcedure = protectedProcedure.use(requirePermission("staff.manage"));
+
 export const filesRouter = router({
   /**
    * Upload a file. The file data must be base64-encoded.
    * Returns the created File record.
    */
-  upload: protectedProcedure
+  upload: filesManageProcedure
     .input(
       z.object({
         fileName: z.string().min(1).max(255),
@@ -103,14 +111,13 @@ export const filesRouter = router({
       return {
         ...file,
         fileSizeBytes: Number(file.fileSizeBytes),
-        url: await storage.getUrl(storagePath),
       };
     }),
 
   /**
    * Download a file by ID. Returns base64-encoded content and metadata.
    */
-  download: protectedProcedure
+  download: filesReadProcedure
     .input(z.object({ id: z.string().min(1) }))
     .query(async ({ ctx, input }) => {
       const file = await ctx.db.file.findFirst({
@@ -135,7 +142,7 @@ export const filesRouter = router({
   /**
    * Soft-delete a file (sets isDeleted = true, keeps the physical file).
    */
-  delete: protectedProcedure
+  delete: filesManageProcedure
     .input(z.object({ id: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {
       const file = await ctx.db.file.findFirst({
@@ -156,7 +163,7 @@ export const filesRouter = router({
   /**
    * List non-deleted files for a given entity.
    */
-  getByEntity: protectedProcedure
+  getByEntity: filesReadProcedure
     .input(
       z.object({
         entityType: z.enum(FILE_ENTITY_TYPES),
@@ -176,14 +183,9 @@ export const filesRouter = router({
         },
       });
 
-      const storage = getFileStorage();
-
-      return Promise.all(
-        files.map(async (f) => ({
-          ...f,
-          fileSizeBytes: Number(f.fileSizeBytes),
-          url: await storage.getUrl(f.storagePath),
-        })),
-      );
+      return files.map((f) => ({
+        ...f,
+        fileSizeBytes: Number(f.fileSizeBytes),
+      }));
     }),
 });
