@@ -1,6 +1,7 @@
 import { router } from "./trpc";
 import { authRouter } from "./routers/auth";
 import { mfaRouter } from "./routers/mfa";
+import { dashboardRouter } from "./routers/dashboard";
 import { signupRouter } from "./routers/signup";
 import { billingRouter } from "./routers/billing";
 import { clientsRouter } from "./routers/clients";
@@ -19,6 +20,7 @@ import { financialRouter } from "./routers/financial";
 export const appRouter = router({
   auth: authRouter,
   mfa: mfaRouter,
+  dashboard: dashboardRouter,
   signup: signupRouter,
   billing: billingRouter,
   clients: clientsRouter,
