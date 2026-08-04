@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuItem,
   DropdownMenuTrigger,
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
@@ -97,12 +98,12 @@ export function NotificationBell() {
           ) : (
             all.map((n, i) => (
               <div key={n.id}>
-                <button
+                <DropdownMenuItem
                   className={cn(
-                    "w-full text-left px-4 py-3 hover:bg-accent transition-colors",
+                    "w-full text-left px-4 py-3 rounded-none cursor-pointer whitespace-normal",
                     !n.isRead && "bg-accent/40",
                   )}
-                  onClick={() => handleClick(n)}
+                  onSelect={() => handleClick(n)}
                 >
                   <div className="flex items-start gap-2">
                     {!n.isRead && (
@@ -120,7 +121,7 @@ export function NotificationBell() {
                       </p>
                     </div>
                   </div>
-                </button>
+                </DropdownMenuItem>
                 {i < all.length - 1 && <DropdownMenuSeparator />}
               </div>
             ))
