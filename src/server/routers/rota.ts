@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { router, protectedProcedure } from "../trpc";
-import { DayOfWeek } from "@prisma/client";
+import { DayOfWeek, Prisma } from "@prisma/client";
 import { requirePermission } from "../middleware/rbac";
 import { assertServiceUserInOrg, assertStaffMemberInOrg } from "../shared/org-guards";
 import type { OrgScopedPrismaClient } from "../middleware/org-scope";
@@ -195,6 +195,140 @@ function minutesBetween(v: { startTime: string; endTime: string }): number {
   const [sh, sm] = v.startTime.split(":").map(Number);
   const [eh, em] = v.endTime.split(":").map(Number);
   return eh * 60 + em - (sh * 60 + sm);
+}
+
+/**
+ * A Serializable-isolation write conflict — Postgres aborted this side of
+ * two concurrent transactions that read/wrote overlapping data (SQLSTATE
+ * 40001) — must be treated as "conflict found", not a generic 500.
+ *
+ * Checked by duck-typing rather than `instanceof Prisma.PrismaClientKnownRequestError`
+ * with code "P2034": verified live against this project's actual driver-adapter
+ * setup (@prisma/adapter-pg) that a write conflict surfaces as a raw
+ * `DriverAdapterError` (name === "DriverAdapterError", cause.kind ===
+ * "TransactionWriteConflict") rather than the wrapped P2034 error the binary
+ * query engine produces — the two shapes are different, and only checking
+ * for P2034 silently failed to catch this in practice. Checking both keeps
+ * this robust if the underlying adapter/engine setup changes.
+ */
+export function isSerializationFailure(e: unknown): boolean {
+  if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2034") return true;
+  if (
+    e instanceof Error &&
+    e.name === "DriverAdapterError" &&
+    typeof (e as { cause?: unknown }).cause === "object" &&
+    (e as { cause?: { kind?: unknown } }).cause !== null &&
+    (e as { cause?: { kind?: unknown } }).cause?.kind === "TransactionWriteConflict"
+  ) {
+    return true;
+  }
+  return false;
+}
+
+type AssignmentAttempt =
+  | { status: "created"; conflicts: ConflictDetail[] }
+  | { status: "already_assigned"; conflicts: ConflictDetail[] }
+  | { status: "double_booked"; conflicts: ConflictDetail[] }
+  | { status: "soft_conflict_blocked"; conflicts: ConflictDetail[] };
+
+/**
+ * Creates a single rota visit assignment, re-checking conflicts against
+ * fresh data inside a Serializable transaction immediately before writing.
+ *
+ * Without this, both `assign` and `autoAssign` read conflict state, decided
+ * there was none, and only then wrote the assignment — with no locking in
+ * between. Two concurrent calls (two managers auto-assigning overlapping
+ * visit sets, or auto-assign racing a manual assign) could both read
+ * "unassigned" and independently pick the same staff member for overlapping
+ * visits, double-booking them despite this exact check existing to prevent
+ * that. Serializable isolation makes Postgres detect the conflicting
+ * concurrent read-write and abort one side with a P2034 error rather than
+ * silently letting both writes through.
+ *
+ * `allowSoftConflictOverride` controls whether a non-DOUBLE_BOOKED conflict
+ * (LEAVE/OUTSIDE_AVAILABILITY) blocks the write or is recorded as an
+ * accepted override — DOUBLE_BOOKED is never overridable either way.
+ */
+export async function tryCreateAssignment(
+  db: OrgScopedPrismaClient,
+  params: {
+    rotaVisitId: string;
+    staffMemberId: string;
+    visitDate: Date;
+    startTime: string;
+    endTime: string;
+    assignedBy: string;
+    organisationId: string;
+    allowSoftConflictOverride: boolean;
+  },
+): Promise<AssignmentAttempt> {
+  try {
+    return await db.$transaction(
+      async (tx) => {
+        const conflicts = await detectConflicts(
+          tx as unknown as OrgScopedPrismaClient,
+          {
+            staffMemberId: params.staffMemberId,
+            visitDate: params.visitDate,
+            startTime: params.startTime,
+            endTime: params.endTime,
+          },
+          params.rotaVisitId,
+        );
+
+        if (conflicts.some((c) => c.type === "DOUBLE_BOOKED")) {
+          return { status: "double_booked" as const, conflicts };
+        }
+        if (conflicts.length > 0 && !params.allowSoftConflictOverride) {
+          return { status: "soft_conflict_blocked" as const, conflicts };
+        }
+
+        const existing = await tx.rotaVisitAssignment.findUnique({
+          where: {
+            rotaVisitId_staffMemberId: {
+              rotaVisitId: params.rotaVisitId,
+              staffMemberId: params.staffMemberId,
+            },
+          },
+        });
+        if (existing) {
+          return { status: "already_assigned" as const, conflicts };
+        }
+
+        await tx.rotaVisitAssignment.create({
+          data: {
+            rotaVisitId: params.rotaVisitId,
+            staffMemberId: params.staffMemberId,
+            organisationId: params.organisationId,
+            hasConflictOverride: conflicts.length > 0,
+            conflictDetails: conflicts.length > 0 ? conflicts : undefined,
+            assignedBy: params.assignedBy,
+          },
+        });
+        await recomputeVisitStatus(tx as unknown as OrgScopedPrismaClient, params.rotaVisitId);
+
+        return { status: "created" as const, conflicts };
+      },
+      { isolationLevel: "Serializable" },
+    );
+  } catch (e) {
+    if (isSerializationFailure(e)) {
+      // Lost the race — someone else committed a conflicting assignment for
+      // this staff member between our read and our write. Report it the
+      // same way an in-transaction DOUBLE_BOOKED detection would, so both
+      // callers handle it identically without needing to know about P2034.
+      return {
+        status: "double_booked",
+        conflicts: [
+          {
+            type: "DOUBLE_BOOKED",
+            message: "Assignment conflicted with a concurrent change — please retry.",
+          },
+        ],
+      };
+    }
+    throw e;
+  }
 }
 
 export const rotaRouter = router({
@@ -497,44 +631,27 @@ export const rotaRouter = router({
         });
         await assertStaffMemberInOrg(ctx.db, input.staffMemberId);
 
-        const conflicts = await detectConflicts(
-          ctx.db,
-          { staffMemberId: input.staffMemberId, ...visit },
-          input.rotaVisitId,
-        );
         // A staff member can't physically attend two overlapping visits —
         // unlike LEAVE/OUTSIDE_AVAILABILITY (which an admin might reasonably
         // override for emergency cover), DOUBLE_BOOKED is never overridable.
-        if (conflicts.some((c) => c.type === "DOUBLE_BOOKED")) {
-          return { applied: false as const, conflicts, hardBlocked: true as const };
-        }
-        if (conflicts.length > 0 && !input.overrideConflict) {
-          return { applied: false as const, conflicts, hardBlocked: false as const };
-        }
-
-        const existing = await ctx.db.rotaVisitAssignment.findUnique({
-          where: {
-            rotaVisitId_staffMemberId: {
-              rotaVisitId: input.rotaVisitId,
-              staffMemberId: input.staffMemberId,
-            },
-          },
+        const result = await tryCreateAssignment(ctx.db, {
+          rotaVisitId: input.rotaVisitId,
+          staffMemberId: input.staffMemberId,
+          visitDate: visit.visitDate,
+          startTime: visit.startTime,
+          endTime: visit.endTime,
+          assignedBy: ctx.user.id,
+          organisationId: ctx.user.organisationId,
+          allowSoftConflictOverride: input.overrideConflict,
         });
-        if (!existing) {
-          await ctx.db.rotaVisitAssignment.create({
-            data: {
-              rotaVisitId: input.rotaVisitId,
-              staffMemberId: input.staffMemberId,
-              organisationId: ctx.user.organisationId,
-              hasConflictOverride: conflicts.length > 0,
-              conflictDetails: conflicts.length > 0 ? conflicts : undefined,
-              assignedBy: ctx.user.id,
-            },
-          });
-          await recomputeVisitStatus(ctx.db, input.rotaVisitId);
-        }
 
-        return { applied: true as const, conflicts };
+        if (result.status === "double_booked") {
+          return { applied: false as const, conflicts: result.conflicts, hardBlocked: true as const };
+        }
+        if (result.status === "soft_conflict_blocked") {
+          return { applied: false as const, conflicts: result.conflicts, hardBlocked: false as const };
+        }
+        return { applied: true as const, conflicts: result.conflicts };
       }),
 
     unassign: rotaManageProcedure
@@ -756,29 +873,54 @@ export const rotaRouter = router({
           }
         }
 
-        const affected = new Set<string>();
+        // Selection above ranks candidates against a single up-front
+        // snapshot (`context`) for efficiency across many visits/staff.
+        // Writing, though, re-checks each pick against fresh data inside
+        // its own transaction (see tryCreateAssignment) — the snapshot can
+        // go stale mid-loop (this loop itself adds assignments as it goes;
+        // a concurrent auto-assign or manual assign call can too), so a
+        // pick that looked conflict-free at selection time can still lose
+        // the race at write time. Recompute of RotaVisit.status happens
+        // inside tryCreateAssignment itself, once per successful write.
+        let assignedCount = 0;
+        let softConflictCount = 0;
+        const visitById = new Map(needing.map((v) => [v.id, v]));
+
         for (const pick of toCreate) {
-          await ctx.db.rotaVisitAssignment.create({
-            data: {
-              rotaVisitId: pick.rotaVisitId,
-              staffMemberId: pick.staffMemberId,
-              organisationId: ctx.user.organisationId,
-              hasConflictOverride: pick.conflicts.length > 0,
-              conflictDetails: pick.conflicts.length > 0 ? pick.conflicts : undefined,
-              assignedBy: ctx.user.id,
-            },
+          const visit = visitById.get(pick.rotaVisitId);
+          if (!visit) continue;
+
+          const result = await tryCreateAssignment(ctx.db, {
+            rotaVisitId: pick.rotaVisitId,
+            staffMemberId: pick.staffMemberId,
+            visitDate: visit.visitDate,
+            startTime: visit.startTime,
+            endTime: visit.endTime,
+            assignedBy: ctx.user.id,
+            organisationId: ctx.user.organisationId,
+            // LEAVE/DOUBLE_BOOKED candidates were already excluded during
+            // selection (line ~823) — an OUTSIDE_AVAILABILITY-only pick is
+            // the deliberate fallback this function's doc comment
+            // describes, so soft conflicts are allowed through here. A
+            // fresh DOUBLE_BOOKED can still surface below if the snapshot
+            // went stale — that's never overridable regardless.
+            allowSoftConflictOverride: true,
           });
-          affected.add(pick.rotaVisitId);
-        }
-        for (const id of affected) {
-          await recomputeVisitStatus(ctx.db, id);
+
+          if (result.status === "double_booked") {
+            skipped.push({
+              rotaVisitId: pick.rotaVisitId,
+              reason: "A conflicting assignment for this staff member was made concurrently — skipped, retry if still needed.",
+            });
+            continue;
+          }
+          if (result.status === "created") {
+            assignedCount++;
+            if (result.conflicts.length > 0) softConflictCount++;
+          }
         }
 
-        return {
-          assignedCount: toCreate.length,
-          softConflictCount: toCreate.filter((p) => p.conflicts.length > 0).length,
-          skipped,
-        };
+        return { assignedCount, softConflictCount, skipped };
       }),
 
     bulkUnassign: rotaManageProcedure
