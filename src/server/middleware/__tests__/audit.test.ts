@@ -84,6 +84,17 @@ describe("buildChanges", () => {
         expect(changes).not.toHaveProperty(field);
       });
     }
+
+    // niNumber/hourlyRate are AES-256-GCM encrypted (random IV per write) —
+    // logging their ciphertext would make every write look like a change to
+    // these fields even when the plaintext is identical, so they're
+    // redacted from audit diffs entirely, not just kept out of plaintext.
+    for (const field of ["niNumber", "hourlyRate"]) {
+      it(`never includes the encrypted '${field}' field`, () => {
+        const changes = buildChanges("create", null, { [field]: "ciphertext-blob", realField: "x" });
+        expect(changes).not.toHaveProperty(field);
+      });
+    }
   });
 
   describe("update", () => {

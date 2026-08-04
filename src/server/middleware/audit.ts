@@ -1,5 +1,6 @@
 import { AuditAction } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { ENCRYPTED_FIELDS_BY_MODEL } from "./field-encryption";
 
 // ─── Models excluded from audit logging ───────────────────────────────────────
 // Audit log itself (infinite-loop prevention) + auth/session tables.
@@ -52,6 +53,14 @@ export function extractEntityId(
   return null;
 }
 
+// Encrypted fields are deliberately excluded from audit diffs, not just
+// from plaintext exposure: encryption uses a random IV per write (see
+// src/lib/encryption.ts), so the ciphertext "changes" on every single write
+// even when the plaintext value is identical — logging it would make every
+// unrelated update to a StaffMember/ServiceUser look like a niNumber/
+// hourlyRate change, which is actively misleading, not just noisy.
+const ENCRYPTED_FIELD_NAMES = new Set(Object.values(ENCRYPTED_FIELDS_BY_MODEL).flat());
+
 const SKIP_FIELDS = new Set([
   "id",
   "createdAt",
@@ -59,6 +68,7 @@ const SKIP_FIELDS = new Set([
   "organisationId",
   "createdBy",
   "updatedBy",
+  ...ENCRYPTED_FIELD_NAMES,
 ]);
 
 // BigInt columns (e.g. File.fileSizeBytes) come back from Prisma as native
