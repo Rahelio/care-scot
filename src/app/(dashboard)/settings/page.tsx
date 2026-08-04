@@ -13,13 +13,14 @@ import {
   Plus,
   UserX,
   UserCheck,
-  ShieldAlert,
   CreditCard,
+  ShieldCheck,
 } from "lucide-react";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
 import { BillingTab } from "@/components/modules/settings/billing-tab";
+import { SecurityTab } from "@/components/modules/settings/security-tab";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -66,14 +67,17 @@ import {
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
-type Tab = "organisation" | "users" | "billing" | "system";
+type Tab = "organisation" | "users" | "billing" | "system" | "security";
 
-const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
+// Security is personal account settings (MFA) — every authenticated user
+// gets it regardless of role. The rest are org-management, admin-only.
+const ADMIN_TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
   { id: "organisation", label: "Organisation", icon: <Building2 className="h-4 w-4" /> },
   { id: "users", label: "Users", icon: <Users2 className="h-4 w-4" /> },
   { id: "billing", label: "Billing", icon: <CreditCard className="h-4 w-4" /> },
   { id: "system", label: "System", icon: <Monitor className="h-4 w-4" /> },
 ];
+const SECURITY_TAB = { id: "security" as const, label: "Security", icon: <ShieldCheck className="h-4 w-4" /> };
 
 const ROLE_LABELS: Record<string, string> = {
   SUPER_ADMIN: "Super Admin",
@@ -114,7 +118,14 @@ const newUserSchema = z.object({
   email: z.string().email("Invalid email"),
   name: z.string().optional(),
   role: z.string().min(1, "Role is required"),
-  tempPassword: z.string().min(8, "Minimum 8 characters"),
+  // Mirrors passwordSchema in src/server/shared/validators.ts — kept in
+  // sync manually so the form catches a weak password before the round
+  // trip to the server, which enforces the same rule regardless.
+  tempPassword: z
+    .string()
+    .min(12, "Password must be at least 12 characters")
+    .regex(/[a-zA-Z]/, "Password must include at least one letter")
+    .regex(/[0-9]/, "Password must include at least one number"),
 });
 
 type NewUserValues = z.infer<typeof newUserSchema>;
@@ -132,38 +143,32 @@ export default function SettingsPage() {
 function SettingsPageContent() {
   const { data: session } = useSession();
   const searchParams = useSearchParams();
-  const [activeTab, setActiveTab] = useState<Tab>(
-    searchParams.get("checkout") ? "billing" : "organisation",
-  );
   const role = session?.user?.role as string | undefined;
 
   const isAdmin =
     role === "ORG_ADMIN" || role === "SUPER_ADMIN";
 
-  if (!isAdmin) {
-    return (
-      <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
-        <ShieldAlert className="h-10 w-10 mb-3" />
-        <p className="text-sm font-medium">Access restricted</p>
-        <p className="text-xs mt-1">
-          You need Admin permissions to access settings.
-        </p>
-      </div>
-    );
-  }
+  const [activeTab, setActiveTab] = useState<Tab>(
+    searchParams.get("checkout") ? "billing" : isAdmin ? "organisation" : "security",
+  );
+
+  // Non-admins get personal account security settings only — org-management
+  // tabs stay admin-gated, but MFA is every user's own account, not an
+  // org-management concern.
+  const tabs = isAdmin ? [...ADMIN_TABS, SECURITY_TAB] : [SECURITY_TAB];
 
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-semibold">Settings</h1>
         <p className="text-muted-foreground text-sm mt-1">
-          Organisation settings &amp; user management
+          {isAdmin ? "Organisation settings & user management" : "Account settings"}
         </p>
       </div>
 
       {/* Tabs */}
       <div className="flex gap-1 border-b overflow-x-auto">
-        {TABS.map((tab) => (
+        {tabs.map((tab) => (
           <button
             key={tab.id}
             className={cn(
@@ -180,10 +185,11 @@ function SettingsPageContent() {
         ))}
       </div>
 
-      {activeTab === "organisation" && <OrganisationTab />}
-      {activeTab === "users" && <UsersTab />}
-      {activeTab === "billing" && <BillingTab />}
-      {activeTab === "system" && <SystemTab />}
+      {activeTab === "security" && <SecurityTab />}
+      {isAdmin && activeTab === "organisation" && <OrganisationTab />}
+      {isAdmin && activeTab === "users" && <UsersTab />}
+      {isAdmin && activeTab === "billing" && <BillingTab />}
+      {isAdmin && activeTab === "system" && <SystemTab />}
     </div>
   );
 }

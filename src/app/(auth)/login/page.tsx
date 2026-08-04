@@ -21,6 +21,7 @@ import {
 const loginSchema = z.object({
   email: z.string().email("Please enter a valid email address"),
   password: z.string().min(1, "Password is required"),
+  code: z.string().optional(),
 });
 
 type LoginValues = z.infer<typeof loginSchema>;
@@ -39,10 +40,15 @@ function LoginForm() {
   const callbackUrl = searchParams.get("callbackUrl") ?? "/clients";
 
   const [serverError, setServerError] = useState<string | null>(null);
+  // Password verified but the account has MFA enabled — reveal the code
+  // input and resubmit with email+password+code rather than a separate
+  // step/endpoint, since Credentials providers only get one authorize() call.
+  const [mfaRequired, setMfaRequired] = useState(false);
+  const [useRecoveryCode, setUseRecoveryCode] = useState(false);
 
   const form = useForm<LoginValues>({
     resolver: zodResolver(loginSchema),
-    defaultValues: { email: "", password: "" },
+    defaultValues: { email: "", password: "", code: "" },
   });
 
   async function onSubmit(values: LoginValues) {
@@ -51,9 +57,21 @@ function LoginForm() {
     const result = await signIn("credentials", {
       email: values.email,
       password: values.password,
+      ...(mfaRequired && useRecoveryCode && { recoveryCode: values.code }),
+      ...(mfaRequired && !useRecoveryCode && { totpCode: values.code }),
       redirect: false,
     });
 
+    if (result?.code === "mfa_required") {
+      setMfaRequired(true);
+      return;
+    }
+    if (result?.code === "mfa_invalid") {
+      setServerError(
+        useRecoveryCode ? "That recovery code is invalid or already used." : "Incorrect code — please try again."
+      );
+      return;
+    }
     if (result?.error) {
       setServerError("Invalid email or password.");
     } else {
@@ -76,9 +94,15 @@ function LoginForm() {
         </div>
 
         <div>
-          <h1 className="text-xl font-semibold tracking-tight">Sign in</h1>
+          <h1 className="text-xl font-semibold tracking-tight">
+            {mfaRequired ? "Enter your code" : "Sign in"}
+          </h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Enter your email and password to continue
+            {mfaRequired
+              ? useRecoveryCode
+                ? "Enter one of your unused recovery codes."
+                : "Enter the 6-digit code from your authenticator app."
+              : "Enter your email and password to continue"}
           </p>
         </div>
 
@@ -88,7 +112,7 @@ function LoginForm() {
               control={form.control}
               name="email"
               render={({ field }) => (
-                <FormItem>
+                <FormItem className={mfaRequired ? "hidden" : undefined}>
                   <FormLabel>Email</FormLabel>
                   <FormControl>
                     <Input
@@ -107,7 +131,7 @@ function LoginForm() {
               control={form.control}
               name="password"
               render={({ field }) => (
-                <FormItem>
+                <FormItem className={mfaRequired ? "hidden" : undefined}>
                   <div className="flex items-center justify-between">
                     <FormLabel>Password</FormLabel>
                     <Link
@@ -129,8 +153,43 @@ function LoginForm() {
               )}
             />
 
+            {mfaRequired && (
+              <FormField
+                control={form.control}
+                name="code"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{useRecoveryCode ? "Recovery code" : "Authenticator code"}</FormLabel>
+                    <FormControl>
+                      <Input
+                        autoComplete="one-time-code"
+                        autoFocus
+                        placeholder={useRecoveryCode ? "XXXX-XXXX-XXXX" : "123456"}
+                        {...field}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            )}
+
             {serverError && (
               <p className="text-sm text-destructive">{serverError}</p>
+            )}
+
+            {mfaRequired && (
+              <button
+                type="button"
+                className="text-xs text-muted-foreground hover:underline"
+                onClick={() => {
+                  setUseRecoveryCode((v) => !v);
+                  form.setValue("code", "");
+                  setServerError(null);
+                }}
+              >
+                {useRecoveryCode ? "Use your authenticator app instead" : "Use a recovery code instead"}
+              </button>
             )}
 
             <Button
