@@ -560,18 +560,26 @@ const carePackagesRouter = router({
 // Reconciliation
 // ─────────────────────────────────────────────
 
-function determineDayType(
+// visit.visitDate is a @db.Date column — Prisma returns these as
+// UTC-midnight Date objects, so getUTCDay() (not getDay()) avoids a
+// local-timezone off-by-one that would misclassify the day type (and
+// therefore the billing rate applied) depending on server TZ — same
+// reasoning as rota.ts's DAY_OF_WEEK_BY_JS_DAY.
+export function determineDayType(
   date: Date,
   bankHolidayDates: Set<string>,
 ): DayType {
   const dateStr = date.toISOString().split("T")[0];
   if (bankHolidayDates.has(dateStr)) return "BANK_HOLIDAY";
-  const day = date.getDay(); // 0=Sun, 6=Sat
+  const day = date.getUTCDay(); // 0=Sun, 6=Sat
   if (day === 0) return "SUNDAY";
   if (day === 6) return "SATURDAY";
   return "WEEKDAY";
 }
 
+// billingStart/scheduledStart are @db.Timestamptz — the actual wall-clock
+// time the visit happened, so local getHours()/getMinutes() here (unlike
+// determineDayType above) is correct, not a bug.
 function formatTime(date: Date): string {
   return `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
 }
@@ -579,8 +587,8 @@ function formatTime(date: Date): string {
 const DOW_MAP: DayOfWeek[] = [
   "SUNDAY", "MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY",
 ];
-function getScheduleDayOfWeek(date: Date): DayOfWeek {
-  return DOW_MAP[date.getDay()];
+export function getScheduleDayOfWeek(date: Date): DayOfWeek {
+  return DOW_MAP[date.getUTCDay()];
 }
 
 const reconciliationRouter = router({
