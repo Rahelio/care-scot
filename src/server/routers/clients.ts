@@ -5,6 +5,7 @@ import { TRPCError } from "@trpc/server";
 import { createAuditLog } from "../middleware/audit";
 import { addressSchema, optionalEmailSchema, paginationSchema } from "../shared/validators";
 import { assertServiceUserInOrg } from "../shared/org-guards";
+import { anonymisedServiceUserData } from "../services/shared/data-retention";
 
 const MANAGER_ROLES = ["MANAGER", "ORG_ADMIN", "SUPER_ADMIN"] as const;
 
@@ -114,13 +115,32 @@ export const clientsRouter = router({
   getById: protectedProcedure
     .input(z.object({ id: z.string().min(1) }))
     .query(async ({ ctx, input }) => {
-      return ctx.db.serviceUser.findUniqueOrThrow({
+      const serviceUser = await ctx.db.serviceUser.findUniqueOrThrow({
         where: { id: input.id },
         include: {
           contacts: { orderBy: { isNextOfKin: "desc" } },
           healthcareProfessionals: true,
         },
       });
+
+      // Fire-and-forget, matching the automatic audit middleware's own
+      // convention (audit.ts) — a full client record (health/personal
+      // details) is exactly the kind of read GDPR accountability and Care
+      // Inspectorate scrutiny expect a "who looked at this" trail for,
+      // which CREATE/UPDATE/DELETE logging alone doesn't provide.
+      createAuditLog({
+        organisationId: ctx.user.organisationId,
+        userId: ctx.user.id,
+        entityType: "ServiceUser",
+        entityId: input.id,
+        action: AuditAction.VIEW,
+        ipAddress: ctx.ipAddress,
+        userAgent: ctx.userAgent,
+      }).catch((err) => {
+        console.error("[audit] Failed to log ServiceUser view:", err);
+      });
+
+      return serviceUser;
     }),
 
   create: protectedProcedure
@@ -700,13 +720,31 @@ export const clientsRouter = router({
       })
     )
     .query(async ({ ctx, input }) => {
-      return ctx.db.healthRecord.findMany({
+      const records = await ctx.db.healthRecord.findMany({
         where: {
           serviceUserId: input.serviceUserId,
           ...(input.recordType && { recordType: input.recordType as never }),
         },
         orderBy: { recordedDate: "desc" },
       });
+
+      // Fire-and-forget, matching the automatic audit middleware's own
+      // convention (audit.ts) — health records need a "who looked at this"
+      // trail, which CREATE/UPDATE/DELETE logging alone doesn't give.
+      createAuditLog({
+        organisationId: ctx.user.organisationId,
+        userId: ctx.user.id,
+        entityType: "ServiceUser",
+        entityId: input.serviceUserId,
+        action: AuditAction.VIEW,
+        changes: { context: "health_records" },
+        ipAddress: ctx.ipAddress,
+        userAgent: ctx.userAgent,
+      }).catch((err) => {
+        console.error("[audit] Failed to log HealthRecord view:", err);
+      });
+
+      return records;
     }),
 
   createHealthRecord: protectedProcedure
@@ -1858,6 +1896,10 @@ export const clientsRouter = router({
    * Free-text fields on sub-records (e.g. an incident description that
    * mentions the person by name in prose) are not scrubbed — that needs a
    * human compliance review, not an automated pass.
+   *
+   * Shares its field list (anonymisedServiceUserData) with the automated
+   * retention purge in data-retention.ts, which applies the same reset
+   * after 6 years post-discharge without a manual request.
    */
   eraseData: protectedProcedure
     .input(z.object({ id: z.string().min(1), confirmationName: z.string().min(1) }))
@@ -1883,29 +1925,7 @@ export const clientsRouter = router({
 
       return ctx.db.serviceUser.update({
         where: { id: input.id },
-        data: {
-          firstName: "Erased",
-          lastName: "Data Subject",
-          chiNumber: null,
-          addressLine1: null,
-          addressLine2: null,
-          city: null,
-          postcode: null,
-          phonePrimary: null,
-          phoneSecondary: null,
-          email: null,
-          niNumber: null,
-          gpName: null,
-          gpPractice: null,
-          gpPhone: null,
-          communicationNeeds: null,
-          culturalReligiousNeeds: null,
-          dietaryRequirements: null,
-          dailyRoutinePreferences: null,
-          advanceCarePlan: null,
-          dischargeReason: null,
-          updatedBy: ctx.user.id,
-        },
+        data: { ...anonymisedServiceUserData(), updatedBy: ctx.user.id },
       });
     }),
 });

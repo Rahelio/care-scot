@@ -20,8 +20,9 @@ By the end, every `git push` to `main` will automatically lint, build a Docker i
 8. [Test the Pipeline](#8-test-the-pipeline)
 9. [Custom Domain (Optional)](#9-custom-domain-optional)
 10. [Schedule the Compliance-Check Cron](#10-schedule-the-compliance-check-cron)
-11. [Configure Third-Party Services (Sentry, SES, Stripe, Turnstile)](#11-configure-third-party-services-sentry-ses-stripe-turnstile)
-12. [Troubleshooting](#12-troubleshooting)
+11. [Schedule the Data-Retention Purge Cron](#11-schedule-the-data-retention-purge-cron)
+12. [Configure Third-Party Services (Sentry, SES, Stripe, Turnstile)](#12-configure-third-party-services-sentry-ses-stripe-turnstile)
+13. [Troubleshooting](#13-troubleshooting)
 
 ---
 
@@ -633,7 +634,77 @@ Should return `{"checked": N, "failed": 0, "results": [...]}`. If `failed` is 0 
 
 ---
 
-## 11. Configure Third-Party Services (Sentry, SES, Stripe, Turnstile)
+## 11. Schedule the Data-Retention Purge Cron
+
+The app has a `POST /api/cron/purge-expired-records` endpoint that anonymises `ServiceUser`/`StaffMember` records once they're 6 years past discharge/departure (org policy decision — see `src/server/services/shared/data-retention.ts` for the exact field list, which mirrors the manual GDPR erasure flow already in the Clients module). Like the compliance-check cron, it does nothing unless something calls it on a schedule, gated by the same `CRON_SECRET` bearer token.
+
+### 11a. Reuse the existing CRON_SECRET and EventBridge connection
+
+If you've already completed Section 10, `CRON_SECRET` and the `carescot-cron-connection` EventBridge connection are already in place — reuse both rather than creating new ones.
+
+### 11b. Create an API destination for this endpoint
+
+```bash
+aws events create-api-destination \
+  --name carescot-purge-expired-records \
+  --connection-arn YOUR_CONNECTION_ARN \
+  --invocation-endpoint "https://YOUR_SERVICE_URL/api/cron/purge-expired-records" \
+  --http-method POST \
+  --region eu-west-2
+```
+
+Note the `ApiDestinationArn` from the output — needed below.
+
+### 11c. Grant the scheduler role permission to invoke it
+
+```bash
+cat > /tmp/scheduler-policy-purge.json << EOF
+{
+  "Version": "2012-10-17",
+  "Statement": [{
+    "Effect": "Allow",
+    "Action": "events:InvokeApiDestination",
+    "Resource": "YOUR_PURGE_API_DESTINATION_ARN"
+  }]
+}
+EOF
+
+aws iam put-role-policy \
+  --role-name carescot-scheduler-role \
+  --policy-name invoke-purge-expired-records \
+  --policy-document file:///tmp/scheduler-policy-purge.json
+```
+
+(Reuses the `carescot-scheduler-role` created in Section 10c — a role can hold more than one inline policy.)
+
+### 11d. Create the schedule
+
+Unlike the daily compliance check, this only needs to run occasionally — records become eligible to purge on the scale of years, not days. Weekly is more than enough:
+
+```bash
+aws scheduler create-schedule \
+  --name carescot-purge-expired-records-weekly \
+  --schedule-expression "rate(7 days)" \
+  --flexible-time-window '{"Mode": "OFF"}' \
+  --target '{
+    "Arn": "YOUR_PURGE_API_DESTINATION_ARN",
+    "RoleArn": "YOUR_SCHEDULER_ROLE_ARN"
+  }' \
+  --region eu-west-2
+```
+
+### 11e. Verify it actually runs
+
+```bash
+curl -X POST https://YOUR_SERVICE_URL/api/cron/purge-expired-records \
+  -H "Authorization: Bearer YOUR_CRON_SECRET"
+```
+
+Should return `{"checked": N, "failed": 0, "results": [{"orgId": "...", "orgName": "...", "serviceUsersAnonymised": 0, "staffMembersAnonymised": 0}, ...]}`. Non-zero counts are expected once records actually cross the 6-year threshold — 0 on a fresh run just means nothing was old enough yet.
+
+---
+
+## 12. Configure Third-Party Services (Sentry, SES, Stripe, Turnstile)
 
 All of these are optional in the sense that the app boots and runs fine without them (each integration safely no-ops when its env vars are unset — see `.env.example` for the full list and what each one does). They're required before real customers use the product, though.
 
@@ -660,7 +731,7 @@ Create a free Turnstile widget at the Cloudflare dashboard for your domain. Set 
 
 ---
 
-## 12. Troubleshooting
+## 13. Troubleshooting
 
 ### Build fails at `npm ci`
 Check that `package-lock.json` is committed to git. The Docker build runs `npm ci` which requires it.
