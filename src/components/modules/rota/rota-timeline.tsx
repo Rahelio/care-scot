@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { Check, Minus } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { isSameDay, dayOfWeekName } from "@/lib/date-helpers";
 import { type StaffOption, type AvailabilityRow, type LeaveRow, coversDate } from "./staff-matrix";
@@ -91,19 +92,25 @@ function VisitBlock({
   );
   const style = { left: `${left}%`, width: `${width}%` };
 
-  // A visit block's width is proportional to its duration, so a short visit
-  // may only have room for a first name — the full name and time are always
-  // available via the title tooltip.
+  // The title tooltip has the full name and time either way, but that's
+  // hover-only and does nothing on touch devices — two same-first-name
+  // clients on the same day were indistinguishable without tapping
+  // through. Always include the last initial and let the block's existing
+  // `truncate` handle narrow blocks (most real visits here are ~30min,
+  // which is wide enough for "Firstname L." at MIN_HOUR_WIDTH anyway; a
+  // shorter block just ellipsizes rather than losing the initial outright).
+  const displayName = `${visit.serviceUser.firstName} ${visit.serviceUser.lastName.charAt(0)}.`;
+
   if (!clickable) {
     return (
       <div className={className} style={style} title={label}>
-        {visit.serviceUser.firstName}
+        {displayName}
       </div>
     );
   }
   return (
     <button type="button" onClick={() => onClick(visit)} className={className} style={style} title={label}>
-      {visit.serviceUser.firstName}
+      {displayName}
     </button>
   );
 }
@@ -198,12 +205,24 @@ function StaffRow({
             const from = Math.max(toMinutes(a.availableFrom), axis.range.startMinutes);
             const to = Math.min(toMinutes(a.availableTo), axis.range.endMinutes);
             if (to <= from) return null;
+            // Not just color: a check/dash icon repeats across the segment
+            // so availability reads without relying on the green/grey shade
+            // contrast alone.
             return (
               <div
                 key={idx}
-                className={cn("absolute top-0 bottom-0", a.isAvailable ? "bg-green-50" : "bg-muted/60")}
+                className={cn(
+                  "absolute top-0 bottom-0 flex items-center gap-2 overflow-hidden px-1",
+                  a.isAvailable ? "bg-green-50" : "bg-muted/60",
+                )}
                 style={{ left: `${pct(from, axis.range)}%`, width: `${pct(to, axis.range) - pct(from, axis.range)}%` }}
-              />
+              >
+                {a.isAvailable ? (
+                  <Check className="h-3.5 w-3.5 shrink-0 text-green-700/50" aria-hidden="true" />
+                ) : (
+                  <Minus className="h-3.5 w-3.5 shrink-0 text-muted-foreground/50" aria-hidden="true" />
+                )}
+              </div>
             );
           })
         )}
